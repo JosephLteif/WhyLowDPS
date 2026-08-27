@@ -83,7 +83,29 @@ test.beforeEach(async ({ page }) => {
 test('dashboard renders with mocked backend state', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByText('Quick Links')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Wowhead' })).toHaveAttribute(
+    'href',
+    'https://www.wowhead.com/'
+  );
   await expect(page.getByRole('heading', { name: /Simulation Activity/ })).toBeVisible();
+});
+
+test('dashboard can add and persist a custom quick link with an icon', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Edit quick links' }).click();
+  await page.getByRole('button', { name: 'Add quick link' }).click();
+  await page.getByRole('button', { name: 'Add Custom URL' }).click();
+  await page.getByLabel('Name').fill('Raid Helper');
+  await page.getByLabel('URL').fill('https://example.com');
+  await page.getByRole('radio', { name: 'Trophy' }).click();
+  await page.getByRole('button', { name: 'Add Link' }).click();
+
+  const customLink = page.getByRole('link', { name: 'Raid Helper' });
+  await expect(customLink).toHaveAttribute('href', 'https://example.com/');
+  await expect(customLink).toHaveAttribute('target', '_blank');
+
+  await page.reload();
+  await expect(page.getByRole('link', { name: 'Raid Helper' })).toBeVisible();
 });
 
 test('quick sim validates empty input and can submit pasted input', async ({ page }) => {

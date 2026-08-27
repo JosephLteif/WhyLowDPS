@@ -8,6 +8,13 @@ Add new work under the `Unreleased` section. The release workflow promotes that 
 
 ### Improvements
 
+#### Keep WoW tools and custom links one click away
+
+The dashboard Quick Links widget now includes popular WoW tools such as Wowhead, Raidbots, WoWAnalyzer, Warcraft Logs, and Raider.IO, with clear icons and new-tab links.
+
+- Add custom http:// or https:// URLs from the Quick Links editor.
+- Choose an icon for each custom link from the built-in icon picker; links are saved locally with the rest of the dashboard preferences.
+
 #### Persist recent SimC profile history
 
 Recent SimC exports in the History list now persist locally, so they remain available after reloading the app or navigating between SimC pages.

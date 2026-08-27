@@ -2,17 +2,47 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type FormEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Activity,
+  ArrowUp,
+  BarChart3,
+  BookOpen,
+  ChartNoAxesCombined,
   Cpu,
   Database,
+  ExternalLink,
+  FlaskConical,
+  Gem,
   GripVertical,
+  Grid2X2,
+  Heart,
+  History,
+  LayoutDashboard,
+  Link2,
   List,
+  Map as MapIcon,
+  MapPinned,
   MoveHorizontal,
   Pencil,
   Plus,
+  ScrollText,
+  Search,
+  Settings,
+  Swords,
+  Trophy,
+  Users,
+  WandSparkles,
   X,
+  Zap,
 } from 'lucide-react';
 import {
   Area,
@@ -94,38 +124,104 @@ const DEFAULT_DASHBOARD_WIDGET_SIZES: Record<DashboardWidgetId, DashboardWidgetS
 
 const STAT_CARD_ORDER: StatCardId[] = ['active', 'total', 'history', 'system'];
 
+const QUICK_LINK_ICON_OPTIONS = [
+  { value: 'activity', label: 'Activity', Icon: Activity },
+  { value: 'arrow-up', label: 'Arrow Up', Icon: ArrowUp },
+  { value: 'bar-chart', label: 'Bar Chart', Icon: BarChart3 },
+  { value: 'book-open', label: 'Book', Icon: BookOpen },
+  { value: 'chart', label: 'Chart', Icon: ChartNoAxesCombined },
+  { value: 'flask', label: 'Flask', Icon: FlaskConical },
+  { value: 'gem', label: 'Gem', Icon: Gem },
+  { value: 'grid', label: 'Grid', Icon: Grid2X2 },
+  { value: 'heart', label: 'Heart', Icon: Heart },
+  { value: 'history', label: 'History', Icon: History },
+  { value: 'layout', label: 'Dashboard', Icon: LayoutDashboard },
+  { value: 'link', label: 'Link', Icon: Link2 },
+  { value: 'map', label: 'Map', Icon: MapIcon },
+  { value: 'map-pinned', label: 'Pinned Map', Icon: MapPinned },
+  { value: 'scroll-text', label: 'Scroll', Icon: ScrollText },
+  { value: 'search', label: 'Search', Icon: Search },
+  { value: 'settings', label: 'Settings', Icon: Settings },
+  { value: 'swords', label: 'Swords', Icon: Swords },
+  { value: 'trophy', label: 'Trophy', Icon: Trophy },
+  { value: 'users', label: 'Users', Icon: Users },
+  { value: 'wand', label: 'Wand', Icon: WandSparkles },
+  { value: 'zap', label: 'Zap', Icon: Zap },
+] as const;
+type QuickLinkIconName = (typeof QUICK_LINK_ICON_OPTIONS)[number]['value'];
+
 type QuickLink = {
   label: string;
   href: string;
+  icon: QuickLinkIconName;
+  external?: boolean;
+  custom?: boolean;
 };
 
+const POPULAR_WOW_LINKS: QuickLink[] = [
+  { label: 'Wowhead', href: 'https://www.wowhead.com/', icon: 'book-open', external: true },
+  { label: 'Raidbots', href: 'https://www.raidbots.com/', icon: 'activity', external: true },
+  { label: 'WoWAnalyzer', href: 'https://wowanalyzer.com/', icon: 'chart', external: true },
+  {
+    label: 'Warcraft Logs',
+    href: 'https://www.warcraftlogs.com/',
+    icon: 'scroll-text',
+    external: true,
+  },
+  { label: 'Raider.IO', href: 'https://raider.io/', icon: 'trophy', external: true },
+];
+
 const DEFAULT_QUICK_LINKS: QuickLink[] = [
-  { label: 'New Quick Sim', href: '/quick-sim' },
-  { label: 'Top Gear', href: '/top-gear' },
-  { label: 'Drop Finder', href: '/drop-finder' },
-  { label: 'Simulation History', href: '/history' },
+  { label: 'New Quick Sim', href: '/quick-sim', icon: 'zap' },
+  { label: 'Top Gear', href: '/top-gear', icon: 'swords' },
+  { label: 'Drop Finder', href: '/drop-finder', icon: 'search' },
+  { label: 'Simulation History', href: '/history', icon: 'history' },
+  ...POPULAR_WOW_LINKS,
 ];
 
 const QUICK_LINK_OPTIONS: QuickLink[] = [
-  { label: 'Dashboard', href: '/' },
-  { label: 'New Quick Sim', href: '/quick-sim' },
-  { label: 'Top Gear', href: '/top-gear' },
-  { label: 'Drop Finder', href: '/drop-finder' },
-  { label: 'Crest Upgrades', href: '/upgrade-compare' },
-  { label: 'Quick Weights', href: '/analysis/quick-weights' },
-  { label: 'Stat Plot', href: '/analysis/stat-plot' },
-  { label: 'Consumable Matrix', href: '/analysis/consumable-matrix' },
-  { label: 'Tier Slot Matrix', href: '/analysis/tier-slot-matrix' },
-  { label: 'Trinkets', href: '/upgrade/trinkets' },
-  { label: 'Dungeons', href: '/dungeons' },
-  { label: 'Raids', href: '/raids' },
-  { label: 'Routes', href: '/dungeon-routes' },
-  { label: 'Simulation History', href: '/history' },
-  { label: 'My Characters', href: '/characters' },
-  { label: 'Wishlist', href: '/wishlist' },
-  { label: 'Talent Playground', href: '/talent-playground' },
-  { label: 'Settings', href: '/settings' },
+  { label: 'Dashboard', href: '/', icon: 'layout' },
+  { label: 'New Quick Sim', href: '/quick-sim', icon: 'zap' },
+  { label: 'Top Gear', href: '/top-gear', icon: 'swords' },
+  { label: 'Drop Finder', href: '/drop-finder', icon: 'search' },
+  { label: 'Crest Upgrades', href: '/upgrade-compare', icon: 'arrow-up' },
+  { label: 'Quick Weights', href: '/analysis/quick-weights', icon: 'bar-chart' },
+  { label: 'Stat Plot', href: '/analysis/stat-plot', icon: 'chart' },
+  { label: 'Consumable Matrix', href: '/analysis/consumable-matrix', icon: 'flask' },
+  { label: 'Tier Slot Matrix', href: '/analysis/tier-slot-matrix', icon: 'grid' },
+  { label: 'Trinkets', href: '/upgrade/trinkets', icon: 'gem' },
+  { label: 'Dungeons', href: '/dungeons', icon: 'map' },
+  { label: 'Raids', href: '/raids', icon: 'swords' },
+  { label: 'Routes', href: '/dungeon-routes', icon: 'map-pinned' },
+  { label: 'Simulation History', href: '/history', icon: 'history' },
+  { label: 'My Characters', href: '/characters', icon: 'users' },
+  { label: 'Wishlist', href: '/wishlist', icon: 'heart' },
+  { label: 'Talent Playground', href: '/talent-playground', icon: 'wand' },
+  { label: 'Settings', href: '/settings', icon: 'settings' },
+  ...POPULAR_WOW_LINKS,
 ];
+
+function isQuickLinkIconName(value: unknown): value is QuickLinkIconName {
+  return (
+    typeof value === 'string' &&
+    QUICK_LINK_ICON_OPTIONS.some((option) => option.value === value)
+  );
+}
+
+function QuickLinkIcon({ name, className }: { name: QuickLinkIconName; className: string }) {
+  const option = QUICK_LINK_ICON_OPTIONS.find(({ value }) => value === name);
+  const Icon = option?.Icon || Link2;
+  return <Icon className={className} strokeWidth={1.8} aria-hidden="true" />;
+}
+
+function normalizeExternalUrl(value: string): string | null {
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
 
 function isLightModeBlockedHref(href: string): boolean {
   return (
@@ -452,6 +548,11 @@ export default function Home() {
   const [quickLinks, setQuickLinks] = useState<QuickLink[]>(DEFAULT_QUICK_LINKS);
   const [quickLinksEditMode, setQuickLinksEditMode] = useState(false);
   const [showQuickLinkAddMenu, setShowQuickLinkAddMenu] = useState(false);
+  const [showCustomQuickLinkForm, setShowCustomQuickLinkForm] = useState(false);
+  const [customQuickLinkLabel, setCustomQuickLinkLabel] = useState('');
+  const [customQuickLinkUrl, setCustomQuickLinkUrl] = useState('');
+  const [customQuickLinkIcon, setCustomQuickLinkIcon] = useState<QuickLinkIconName>('link');
+  const [customQuickLinkError, setCustomQuickLinkError] = useState<string | null>(null);
   const draggedTrackedIndexRef = useRef<number | null>(null);
   const quickLinkAddMenuRef = useRef<HTMLDivElement | null>(null);
   const dashboardAddMenuRef = useRef<HTMLDivElement | null>(null);
@@ -519,7 +620,26 @@ export default function Home() {
       if (!Array.isArray(parsed)) return;
       const optionsByHref = new Map(QUICK_LINK_OPTIONS.map((link) => [link.href, link]));
       const links = parsed
-        .map((link) => optionsByHref.get(String(link?.href || '').trim()))
+        .map((link) => {
+          const href = String(link?.href || '').trim();
+          const option = optionsByHref.get(href);
+          if (option) {
+            return {
+              ...option,
+              icon: isQuickLinkIconName(link?.icon) ? link.icon : option.icon,
+            };
+          }
+          const label = String(link?.label || '').trim();
+          const normalizedHref = normalizeExternalUrl(href);
+          if (!label || !normalizedHref) return null;
+          return {
+            label: label.slice(0, 80),
+            href: normalizedHref,
+            icon: isQuickLinkIconName(link?.icon) ? link.icon : 'link',
+            external: true,
+            custom: true,
+          } satisfies QuickLink;
+        })
         .filter((link): link is QuickLink => Boolean(link));
       setQuickLinks(links.length > 0 ? links : DEFAULT_QUICK_LINKS);
     } catch {
@@ -774,6 +894,54 @@ export default function Home() {
     [persistQuickLinks, quickLinks]
   );
 
+  const resetCustomQuickLinkForm = useCallback(() => {
+    setShowCustomQuickLinkForm(false);
+    setCustomQuickLinkLabel('');
+    setCustomQuickLinkUrl('');
+    setCustomQuickLinkIcon('link');
+    setCustomQuickLinkError(null);
+  }, []);
+
+  const addCustomQuickLink = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const label = customQuickLinkLabel.trim();
+      const href = normalizeExternalUrl(customQuickLinkUrl);
+      if (!label) {
+        setCustomQuickLinkError('Enter a name for this link.');
+        return;
+      }
+      if (!href) {
+        setCustomQuickLinkError('Enter a valid http:// or https:// URL.');
+        return;
+      }
+      if (quickLinks.some((link) => link.href === href)) {
+        setCustomQuickLinkError('That URL is already in your quick links.');
+        return;
+      }
+      persistQuickLinks([
+        ...quickLinks,
+        {
+          label: label.slice(0, 80),
+          href,
+          icon: customQuickLinkIcon,
+          external: true,
+          custom: true,
+        },
+      ]);
+      setShowQuickLinkAddMenu(false);
+      resetCustomQuickLinkForm();
+    },
+    [
+      customQuickLinkIcon,
+      customQuickLinkLabel,
+      customQuickLinkUrl,
+      persistQuickLinks,
+      quickLinks,
+      resetCustomQuickLinkForm,
+    ]
+  );
+
   const removeQuickLink = useCallback(
     (index: number) => {
       persistQuickLinks(quickLinks.filter((_, i) => i !== index));
@@ -916,9 +1084,10 @@ export default function Home() {
     [dashboardEditMode, reorderDashboardWidget]
   );
 
-  useDismissOnOutside(quickLinkAddMenuRef, showQuickLinkAddMenu, () =>
-    setShowQuickLinkAddMenu(false)
-  );
+  useDismissOnOutside(quickLinkAddMenuRef, showQuickLinkAddMenu, () => {
+    setShowQuickLinkAddMenu(false);
+    resetCustomQuickLinkForm();
+  });
   useDismissOnOutside(dashboardAddMenuRef, showDashboardAddMenu, () =>
     setShowDashboardAddMenu(false)
   );
@@ -1502,7 +1671,10 @@ export default function Home() {
                     <div ref={quickLinkAddMenuRef} className="relative">
                       <button
                         type="button"
-                        onClick={() => setShowQuickLinkAddMenu((v) => !v)}
+                        onClick={() => {
+                          if (showQuickLinkAddMenu) resetCustomQuickLinkForm();
+                          setShowQuickLinkAddMenu((v) => !v);
+                        }}
                         className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-white/15 bg-white/[0.04] text-zinc-200 transition-colors hover:bg-white/[0.1] hover:text-white"
                         title="Add quick link"
                         aria-label="Add quick link"
@@ -1510,20 +1682,120 @@ export default function Home() {
                         <Plus className="h-3.5 w-3.5" strokeWidth={2} />
                       </button>
                       {showQuickLinkAddMenu && (
-                        <div className="absolute right-0 z-50 mt-1 w-max min-w-48 max-w-[calc(100vw-2rem)] rounded-md border border-white/10 bg-[#111218] p-1 shadow-xl">
-                          {addableQuickLinks.length === 0 ? (
-                            <div className="px-2 py-1.5 text-xs text-zinc-500">No links to add</div>
+                        <div className="absolute right-0 z-50 mt-1 w-80 max-w-[calc(100vw-2rem)] rounded-md border border-white/10 bg-[#111218] p-1 shadow-xl">
+                          {showCustomQuickLinkForm ? (
+                            <form onSubmit={addCustomQuickLink} className="space-y-3 p-2">
+                              <div>
+                                <p className="text-xs font-semibold text-zinc-200">Add Custom URL</p>
+                                <p className="mt-1 text-[11px] text-zinc-500">
+                                  Save any http:// or https:// destination to this dashboard.
+                                </p>
+                              </div>
+                              <label className="block text-[11px] font-semibold text-zinc-400">
+                                Name
+                                <input
+                                  value={customQuickLinkLabel}
+                                  onChange={(event) => setCustomQuickLinkLabel(event.target.value)}
+                                  maxLength={80}
+                                  autoFocus
+                                  placeholder="My guild site"
+                                  className="mt-1 w-full rounded-md border border-white/10 bg-black/20 px-2.5 py-2 text-sm font-normal text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-gold/60"
+                                />
+                              </label>
+                              <label className="block text-[11px] font-semibold text-zinc-400">
+                                URL
+                                <input
+                                  type="url"
+                                  value={customQuickLinkUrl}
+                                  onChange={(event) => setCustomQuickLinkUrl(event.target.value)}
+                                  maxLength={2000}
+                                  placeholder="https://example.com"
+                                  className="mt-1 w-full rounded-md border border-white/10 bg-black/20 px-2.5 py-2 text-sm font-normal text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-gold/60"
+                                />
+                              </label>
+                              <fieldset>
+                                <legend className="mb-1.5 text-[11px] font-semibold text-zinc-400">
+                                  Icon
+                                </legend>
+                                <div
+                                  role="radiogroup"
+                                  aria-label="Link icon"
+                                  className="grid grid-cols-7 gap-1"
+                                >
+                                  {QUICK_LINK_ICON_OPTIONS.map(({ value, label }) => (
+                                    <button
+                                      key={value}
+                                      type="button"
+                                      role="radio"
+                                      aria-label={label}
+                                      aria-checked={customQuickLinkIcon === value}
+                                      title={label}
+                                      onClick={() => setCustomQuickLinkIcon(value)}
+                                      className={`inline-flex h-8 items-center justify-center rounded border transition-colors ${
+                                        customQuickLinkIcon === value
+                                          ? 'border-gold/60 bg-gold/15 text-gold'
+                                          : 'border-white/10 bg-black/20 text-zinc-400 hover:bg-white/10 hover:text-zinc-200'
+                                      }`}
+                                    >
+                                      <QuickLinkIcon name={value} className="h-4 w-4" />
+                                    </button>
+                                  ))}
+                                </div>
+                              </fieldset>
+                              {customQuickLinkError && (
+                                <p role="alert" className="text-xs text-red-300">
+                                  {customQuickLinkError}
+                                </p>
+                              )}
+                              <div className="flex justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={resetCustomQuickLinkForm}
+                                  className="rounded-md border border-white/10 px-2.5 py-1.5 text-xs text-zinc-400 hover:bg-white/10 hover:text-zinc-200"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="submit"
+                                  disabled={!customQuickLinkLabel.trim() || !customQuickLinkUrl.trim()}
+                                  className="rounded-md bg-gold/90 px-2.5 py-1.5 text-xs font-semibold text-black hover:bg-gold disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  Add Link
+                                </button>
+                              </div>
+                            </form>
                           ) : (
-                            addableQuickLinks.map((link) => (
+                            <>
                               <button
-                                key={`add-quick-link-${link.href}`}
                                 type="button"
-                                onClick={() => addQuickLink(link)}
-                                className="block w-full rounded px-2 py-1.5 text-left text-xs text-zinc-200 transition-colors hover:bg-white/10"
+                                onClick={() => {
+                                  setShowCustomQuickLinkForm(true);
+                                  setCustomQuickLinkError(null);
+                                }}
+                                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs font-semibold text-gold transition-colors hover:bg-gold/10"
                               >
-                                {link.label}
+                                <Plus className="h-3.5 w-3.5" strokeWidth={2} />
+                                Add Custom URL
                               </button>
-                            ))
+                              {addableQuickLinks.length === 0 ? (
+                                <div className="px-2 py-1.5 text-xs text-zinc-500">No links to add</div>
+                              ) : (
+                                addableQuickLinks.map((link) => (
+                                  <button
+                                    key={`add-quick-link-${link.href}`}
+                                    type="button"
+                                    onClick={() => addQuickLink(link)}
+                                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-zinc-200 transition-colors hover:bg-white/10"
+                                  >
+                                    <QuickLinkIcon
+                                      name={link.icon}
+                                      className="h-3.5 w-3.5 shrink-0 text-zinc-500"
+                                    />
+                                    <span className="truncate">{link.label}</span>
+                                  </button>
+                                ))
+                              )}
+                            </>
                           )}
                         </div>
                       )}
@@ -1553,18 +1825,48 @@ export default function Home() {
                 <div className="space-y-2">
                   {visibleQuickLinks.map((link, index) => {
                     const className =
-                      'block min-w-0 flex-1 truncate rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-zinc-200 transition-colors hover:border-border-light hover:bg-surface';
+                      'flex min-w-0 flex-1 items-center justify-between gap-2 rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-zinc-200 transition-colors hover:border-border-light hover:bg-surface';
                     return (
                       <div key={`${link.href}-${index}`} className="flex items-center gap-2">
-                        <Link
-                          href={link.href}
-                          onClick={(e) => {
-                            if (quickLinksEditMode) e.preventDefault();
-                          }}
-                          className={className}
-                        >
-                          {link.label}
-                        </Link>
+                        {link.external ? (
+                          <a
+                            href={link.href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => {
+                              if (quickLinksEditMode) e.preventDefault();
+                            }}
+                            className={className}
+                          >
+                            <span className="flex min-w-0 items-center gap-2">
+                              <QuickLinkIcon
+                                name={link.icon}
+                                className="h-4 w-4 shrink-0 text-zinc-500"
+                              />
+                              <span className="min-w-0 truncate">{link.label}</span>
+                            </span>
+                            <ExternalLink
+                              className="h-3.5 w-3.5 shrink-0 text-zinc-500"
+                              aria-hidden="true"
+                            />
+                          </a>
+                        ) : (
+                          <Link
+                            href={link.href}
+                            onClick={(e) => {
+                              if (quickLinksEditMode) e.preventDefault();
+                            }}
+                            className={className}
+                          >
+                            <span className="flex min-w-0 items-center gap-2">
+                              <QuickLinkIcon
+                                name={link.icon}
+                                className="h-4 w-4 shrink-0 text-zinc-500"
+                              />
+                              <span className="min-w-0 truncate">{link.label}</span>
+                            </span>
+                          </Link>
+                        )}
                         {quickLinksEditMode && (
                           <button
                             type="button"

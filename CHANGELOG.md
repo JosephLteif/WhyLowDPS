@@ -8,6 +8,7 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ### Changed
 
+- Dashboard Quick Links now include popular WoW tools and support custom http:// or https:// URLs with selectable icons, persisted locally and opened in a new tab.
 - Recent SimC exports in the History list now persist locally across reloads and navigation, while remaining limited to the 20 most recent profiles and clearable from the profile dropdown.
 - Upgrade Trinkets now default to current-season raid and dungeon sources, with an opt-in setting for old-season and Turbulent trinkets; excluded trinkets are removed before simulation combinations are generated.
 - Top Gear and Upgrade Compare now calculate the full combination count before launch, keep simulation start disabled while it is computing, and explain when the exact total exceeds the configured limit.

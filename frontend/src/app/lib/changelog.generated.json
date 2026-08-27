@@ -1,11 +1,20 @@
 {
-  "contentRevision": "Unreleased-9b8805521548",
+  "contentRevision": "Unreleased-a65f81bc4765",
   "releases": [
     {
       "version": "Unreleased",
       "date": "",
       "title": "Upcoming changes",
       "entries": [
+        {
+          "category": "improvement",
+          "title": "Keep WoW tools and custom links one click away",
+          "summary": "The dashboard Quick Links widget now includes popular WoW tools such as Wowhead, Raidbots, WoWAnalyzer, Warcraft Logs, and Raider.IO, with clear icons and new-tab links.",
+          "items": [
+            "Add custom http:// or https:// URLs from the Quick Links editor.",
+            "Choose an icon for each custom link from the built-in icon picker; links are saved locally with the rest of the dashboard preferences."
+          ]
+        },
         {
           "category": "improvement",
           "title": "Persist recent SimC profile history",

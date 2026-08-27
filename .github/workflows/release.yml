@@ -154,7 +154,9 @@ jobs:
           fi
           git fetch origin "refs/tags/${DEV_TAG}:refs/tags/${DEV_TAG}"
           git checkout --detach "refs/tags/${DEV_TAG}"
+          DEV_SHA="$(git rev-parse HEAD)"
           echo "stable_version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "dev_sha=${DEV_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: Create stable tag from tested dev build
         id: promote
@@ -162,6 +164,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           DEV_VERSION: ${{ inputs.dev_version }}
+          DEV_SHA: ${{ steps.select.outputs.dev_sha }}
           STABLE_VERSION: ${{ steps.select.outputs.stable_version }}
         run: |
           set -euo pipefail
@@ -169,6 +172,14 @@ jobs:
           if git ls-remote --exit-code origin "refs/tags/v${VERSION}" >/dev/null; then
             echo "Stable release tag v${VERSION} already exists; select a different developer version."
             exit 1
+          fi
+
+          git fetch origin master
+          git checkout --detach origin/master
+          SOURCE_PATCH="${RUNNER_TEMP}/dev-source.patch"
+          git diff --binary --no-renames origin/master "${DEV_SHA}" -- . ':(exclude).github/workflows/**' > "${SOURCE_PATCH}"
+          if [[ -s "${SOURCE_PATCH}" ]]; then
+            git apply "${SOURCE_PATCH}"
           fi
 
           printf '%s\n' "${VERSION}" > VERSION

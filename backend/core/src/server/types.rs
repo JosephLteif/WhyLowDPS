@@ -74,6 +74,9 @@ pub struct SimOptions {
     pub heatmap_role_pools: String,
     #[serde(default)]
     pub heatmap_ignore_spec_restrictions: bool,
+    /// Include trinkets from older seasons and temporary event pools.
+    #[serde(default)]
+    pub heatmap_include_legacy_trinkets: bool,
     #[serde(default)]
     pub external_buff_chaos_brand: bool,
     #[serde(default)]
@@ -179,6 +182,7 @@ impl SimOptions {
             "consumable_matrix_temporary_enchants": self.consumable_matrix_temporary_enchants,
             "consumable_matrix_raid_buffs": self.consumable_matrix_raid_buffs,
         });
+        v["heatmap_include_legacy_trinkets"] = json!(self.heatmap_include_legacy_trinkets);
         if let Some(stats) = &self.baseline_live_stats {
             v["baseline_live_stats"] = stats.clone();
         }
@@ -515,6 +519,7 @@ mod tests {
         assert_eq!(req.options.heatmap_target_ilevel, 289);
         assert_eq!(req.options.heatmap_trinket_sources, "all");
         assert_eq!(req.options.heatmap_role_pools, "auto");
+        assert!(!req.options.heatmap_include_legacy_trinkets);
     }
 
     #[test]

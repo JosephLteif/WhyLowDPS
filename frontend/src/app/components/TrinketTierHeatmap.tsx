@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { getIconUrl, getWowheadData, getWowheadUrl, useItemInfo } from '../lib/useItemInfo';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 
@@ -64,6 +65,19 @@ function parseTrinketPairItem(item: Record<string, unknown>): TrinketPairItem {
   };
 }
 
+function trinketResultIsCurrentSeason(result: HeatmapResult): boolean {
+  const trinkets = (result.items || []).filter((item) => {
+    const slot = typeof item.slot === 'string' ? item.slot : '';
+    return slot === 'trinket1' || slot === 'trinket2';
+  });
+
+  // Equipped items are the fixed side of a locked-slot comparison, not a
+  // candidate from the drop pool. Missing metadata is kept for old jobs.
+  return trinkets
+    .filter((item) => item.origin !== 'equipped')
+    .every((item) => item.current_season !== false);
+}
+
 export default function TrinketTierHeatmap({
   baseDps,
   results,
@@ -73,10 +87,14 @@ export default function TrinketTierHeatmap({
   results: HeatmapResult[];
   elapsedSeconds?: number;
 }) {
-  const trinketResults = results.filter((result) => {
+  const [includeLegacyTrinkets, setIncludeLegacyTrinkets] = useState(false);
+  const allTrinketResults = results.filter((result) => {
     const items = Array.isArray(result.items) ? result.items : [];
     return items.some((i) => i.heatmap_kind === 'trinket');
   });
+  const trinketResults = allTrinketResults.filter(
+    (result) => includeLegacyTrinkets || trinketResultIsCurrentSeason(result),
+  );
 
   const tierResults = results.filter((result) => {
     const items = Array.isArray(result.items) ? result.items : [];
@@ -308,6 +326,34 @@ export default function TrinketTierHeatmap({
           </p>
         ) : null}
       </div>
+
+      {allTrinketResults.length > 0 && (
+        <div className="card border-gold/10 bg-gold/[0.02] p-4">
+          <label className="flex items-center justify-between gap-3">
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-zinc-100">
+                Include Old-Season / Turbulent Trinkets
+              </span>
+              <span className="mt-1 block text-xs text-zinc-400">
+                Off by default: show only trinkets from the current season raid and dungeon rotation.
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              aria-label="Include old-season and Turbulent trinkets"
+              checked={includeLegacyTrinkets}
+              onChange={(event) => setIncludeLegacyTrinkets(event.target.checked)}
+              className="h-5 w-5 shrink-0 accent-gold"
+            />
+          </label>
+          {trinketResults.length === 0 ? (
+            <p className="mt-3 text-xs text-amber-200">
+              No current-season trinket results are available in this run. Enable the toggle to show
+              older sources.
+            </p>
+          ) : null}
+        </div>
+      )}
 
       {trinketAxes.length > 0 && (
         <div className="card p-5">

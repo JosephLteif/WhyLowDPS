@@ -8,12 +8,14 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ### Changed
 
+- Upgrade Trinkets now default to current-season raid and dungeon sources, with an opt-in setting for old-season and Turbulent trinkets; excluded trinkets are removed before simulation combinations are generated.
 - Top Gear and Upgrade Compare now calculate the full combination count before launch, keep simulation start disabled while it is computing, and explain when the exact total exceeds the configured limit.
 - Active simulations now remain monitorable across pages with a minimizable progress indicator, while the duplicate indicator is hidden on the simulation's own progress or result page; completion notifications still link back to the result.
 - The release pipeline now separates automated developer builds from stable release promotion for a cleaner, more reliable release cycle.
 
 ### Fixed
 
+- Trinket heatmaps now use the selected target item level for fallback drops, so Myth 6/6 no longer simulates raw 108 item-level variants alongside 334 candidates.
 - Top Gear now keeps the combination count accurate when selecting all available gear items.
 
 ## [4.1.1] - 2026-08-25

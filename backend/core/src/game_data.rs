@@ -448,9 +448,9 @@ mod tests {
             json!({"id": 100, "name":"Raid Alpha", "type":"raid", "encounters":[{"id":1001,"name":"Boss Alpha"}]}),
             json!({"id": 11, "name":"World Bosses", "type":"raid", "encounters":[{"id":1101,"name":"WB Alpha"}]}),
             json!({"id": 200, "name":"Leatherworking Workshop", "type":"profession", "encounters":[{"id":2001,"name":"Pattern"}]}),
-            json!({"id": 30, "name":"Dungeon Prime", "type":"dungeon", "encounters":[{"id":3001,"name":"Final Boss"}], "active_rotation": true}),
+            json!({"id": 30, "name":"Dungeon Prime", "type":"dungeon", "current_season": false, "encounters":[{"id":3001,"name":"Final Boss"}], "active_rotation": true}),
             json!({"id": -1, "name":"Mythic Plus", "type":"mythic_plus", "encounters":[{"id":30,"name":"Dungeon Prime"}]}),
-            json!({"id": -2, "name":"Meta Pool", "type":"pool", "encounters":[{"id":30,"name":"Dungeon Prime"}]}),
+            json!({"id": -2, "name":"Meta Pool", "type":"pool", "encounters":[{"id":3001,"name":"Final Boss"}]}),
         ];
 
         let mut raid_good = game_item(5001, "Warhelm of Strength", 4, 620, 4, 4, 1);
@@ -488,7 +488,7 @@ mod tests {
             ),
             (1101_i64, vec![world_boss_item]),
             (2001_i64, vec![profession_item]),
-            (30_i64, vec![meta_item]),
+            (3001_i64, vec![meta_item]),
         ]));
 
         let raid = get_instance_drops(100, Some("warrior"), Some("fury")).expect("raid drops");
@@ -593,6 +593,10 @@ mod tests {
         assert_eq!(
             meta_weapon.get("instance_id").and_then(Value::as_i64),
             Some(30)
+        );
+        assert_eq!(
+            meta_weapon.get("current_season").and_then(Value::as_bool),
+            Some(false)
         );
 
         assert!(get_instance_drops(9999, Some("warrior"), Some("fury")).is_none());

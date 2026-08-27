@@ -325,36 +325,57 @@ pub fn get_instance_drops(
         })
         .collect();
 
-    // For meta-instances (pools), the encounter IDs are actually instance IDs.
-    // Map each encounter ID to the instance name by direct ID lookup.
-    let (encounter_to_instance, encounter_to_type): (HashMap<i64, String>, HashMap<i64, String>) =
-        if is_meta {
-            let mut map = HashMap::new();
-            let mut tmap = HashMap::new();
-            for inst in &instances {
+    // Meta-instances (pools) identify sources either by instance ID (older
+    // pools) or by one of the source instance's encounter IDs (season pools).
+    let (encounter_to_instance, encounter_to_instance_id, encounter_to_type): (
+        HashMap<i64, String>,
+        HashMap<i64, i64>,
+        HashMap<i64, String>,
+    ) = if is_meta {
+        let mut instance_names = HashMap::new();
+        let mut instance_ids = HashMap::new();
+        let mut instance_types = HashMap::new();
+        for eid in encounter_ids.keys() {
+            let source_instance = instances.iter().find(|inst| {
                 let iid = inst.get("id").and_then(|v| v.as_i64()).unwrap_or(0);
                 if iid <= 0 {
-                    continue;
+                    return false;
                 }
-                if encounter_ids.contains_key(&iid) {
-                    let iname = inst
-                        .get("name")
-                        .and_then(|n| n.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    let itype = inst
-                        .get("type")
-                        .and_then(|t| t.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    map.insert(iid, iname);
-                    tmap.insert(iid, itype);
-                }
-            }
-            (map, tmap)
-        } else {
-            (HashMap::new(), HashMap::new())
-        };
+                iid == *eid
+                    || inst
+                        .get("encounters")
+                        .and_then(|v| v.as_array())
+                        .is_some_and(|encounters| {
+                            encounters.iter().any(|encounter| {
+                                encounter.get("id").and_then(|v| v.as_i64()) == Some(*eid)
+                            })
+                        })
+            });
+            let Some(source_instance) = source_instance else {
+                continue;
+            };
+            let source_instance_id = source_instance
+                .get("id")
+                .and_then(|v| v.as_i64())
+                .unwrap_or_default();
+            let source_instance_name = source_instance
+                .get("name")
+                .and_then(|n| n.as_str())
+                .unwrap_or("")
+                .to_string();
+            let source_type = source_instance
+                .get("type")
+                .and_then(|t| t.as_str())
+                .unwrap_or("")
+                .to_string();
+            instance_names.insert(*eid, source_instance_name);
+            instance_ids.insert(*eid, source_instance_id);
+            instance_types.insert(*eid, source_type);
+        }
+        (instance_names, instance_ids, instance_types)
+    } else {
+        (HashMap::new(), HashMap::new(), HashMap::new())
+    };
 
     // Current Mythic+ rotation pool is encoded as the encounter list on instance -1,
     // where each encounter id is a dungeon instance id.
@@ -464,7 +485,22 @@ pub fn get_instance_drops(
                 } else {
                     instance_name.clone()
                 };
-                let source_instance_id = if is_meta { *eid } else { instance_id };
+                let source_instance_id = if is_meta {
+                    encounter_to_instance_id.get(eid).copied().unwrap_or(*eid)
+                } else {
+                    instance_id
+                };
+                let source_current_season = instances
+                    .iter()
+                    .find(|candidate| {
+                        candidate.get("id").and_then(Value::as_i64) == Some(source_instance_id)
+                    })
+                    .and_then(|candidate| candidate.get("current_season"))
+                    .and_then(Value::as_bool)
+                    .or_else(|| instance.get("current_season").and_then(Value::as_bool))
+                    // Older/runtime fixtures may not have season metadata. Keep
+                    // their historical behavior until the data is refreshed.
+                    .unwrap_or(true);
                 let source_type_name = if is_meta {
                     encounter_to_type.get(eid).cloned().unwrap_or_default()
                 } else {
@@ -628,6 +664,7 @@ pub fn get_instance_drops(
                     "instance_name": source_instance_name,
                     "instance_id": source_instance_id,
                     "source_type": source_type_name,
+                    "current_season": source_current_season,
                     "is_catalyst": is_catalyst,
                     "can_catalyst": can_catalyst,
                 });

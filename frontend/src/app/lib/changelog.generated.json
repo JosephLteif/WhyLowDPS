@@ -1,11 +1,20 @@
 {
-  "contentRevision": "Unreleased-9256504ee6d7",
+  "contentRevision": "Unreleased-bf4839d595ce",
   "releases": [
     {
       "version": "Unreleased",
       "date": "",
       "title": "Upcoming changes",
       "entries": [
+        {
+          "category": "improvement",
+          "title": "Filter legacy trinkets from Upgrade simulations",
+          "summary": "Upgrade Trinkets now defaults to current-season raid and dungeon sources, with an opt-in setting for old-season and Turbulent trinkets when those items are still relevant.",
+          "items": [
+            "Current-season filtering is applied before simulation combinations are generated, so excluded trinkets are not simulated.",
+            "The setting can be enabled from the setup form or from the results view."
+          ]
+        },
         {
           "category": "improvement",
           "title": "See the exact combination count before launching",
@@ -32,6 +41,14 @@
           "items": [
             "Pushes to `dev` publish the tested moving developer release.",
             "Stable releases can promote the tested developer build from the Release workflow."
+          ]
+        },
+        {
+          "category": "fix",
+          "title": "Use the selected target item level for trinket candidates",
+          "summary": "Trinket heatmaps now apply the selected target item level to fallback drops, preventing base-level variants from being simulated alongside the selected Myth upgrade level.",
+          "items": [
+            "Myth 6/6 selections no longer add raw 108 item-level variants to a 334 target simulation."
           ]
         },
         {

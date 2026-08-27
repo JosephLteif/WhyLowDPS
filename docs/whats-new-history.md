@@ -8,6 +8,13 @@ Add new work under the `Unreleased` section. The release workflow promotes that 
 
 ### Improvements
 
+#### Filter legacy trinkets from Upgrade simulations
+
+Upgrade Trinkets now defaults to current-season raid and dungeon sources, with an opt-in setting for old-season and Turbulent trinkets when those items are still relevant.
+
+- Current-season filtering is applied before simulation combinations are generated, so excluded trinkets are not simulated.
+- The setting can be enabled from the setup form or from the results view.
+
 #### See the exact combination count before launching
 
 Top Gear and Upgrade Compare now finish calculating the full combination count before a simulation can start, and explain clearly when the total is above the configured launch limit.
@@ -31,6 +38,12 @@ The release pipeline now separates automated developer builds from stable releas
 - Stable releases can promote the tested developer build from the Release workflow.
 
 ### Bug fixes
+
+#### Use the selected target item level for trinket candidates
+
+Trinket heatmaps now apply the selected target item level to fallback drops, preventing base-level variants from being simulated alongside the selected Myth upgrade level.
+
+- Myth 6/6 selections no longer add raw 108 item-level variants to a 334 target simulation.
 
 #### Show accurate Top Gear combination counts
 

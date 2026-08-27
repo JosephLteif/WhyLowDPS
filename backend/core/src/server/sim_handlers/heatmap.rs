@@ -542,21 +542,35 @@ mod tests {
         let mut candidate_two = test_item(9102, Some(vec![72]), None);
         candidate_two.name = "Raid Trinket Beta".to_string();
 
+        let mut candidate_three = test_item(9103, Some(vec![72]), None);
+        candidate_three.name = "Base-Only Trinket".to_string();
+        candidate_three.base_ilevel = Some(108);
+
         *state::ITEMS.write().unwrap() = Arc::new(HashMap::from([
             (9000_u64, fixed_one),
             (9003_u64, fixed_two),
             (9101_u64, candidate_one.clone()),
             (9102_u64, candidate_two.clone()),
+            (9103_u64, candidate_three.clone()),
         ]));
-        *state::INSTANCES.write().unwrap() = vec![json!({
-            "id": 7001,
-            "type": "raid",
-            "encounters": [{ "id": 8001 }]
-        })];
-        *state::DROPS_BY_ENCOUNTER.write().unwrap() = Arc::new(HashMap::from([(
-            8001_i64,
-            vec![candidate_one, candidate_two],
-        )]));
+        *state::INSTANCES.write().unwrap() = vec![
+            json!({
+                "id": 7001,
+                "type": "raid",
+                "current_season": true,
+                "encounters": [{ "id": 8001 }]
+            }),
+            json!({
+                "id": 7002,
+                "type": "raid",
+                "current_season": false,
+                "encounters": [{ "id": 8002 }]
+            }),
+        ];
+        *state::DROPS_BY_ENCOUNTER.write().unwrap() = Arc::new(HashMap::from([
+            (8001_i64, vec![candidate_one, candidate_three]),
+            (8002_i64, vec![candidate_two]),
+        ]));
 
         let (generated_input, combo_count, combo_metadata) = build_heatmap_profileset_input(
             "warrior=\"Tester\"\nspec=fury\ntrinket1=id=9000,ilevel=619\ntrinket2=id=9003,ilevel=615\n",
@@ -568,20 +582,49 @@ mod tests {
             "trinket1",
             "auto",
             false,
+            false,
         )
         .expect("trinket heatmap input");
 
         assert_eq!(combo_count, 2);
         assert_eq!(combo_metadata.len(), 2);
         assert!(generated_input.contains("profileset.\"Heatmap Trinket 1"));
-        assert!(generated_input.contains("profileset.\"Heatmap Trinket 2"));
         assert!(generated_input.contains("trinket2=,id=9101,ilevel=639"));
-        assert!(generated_input.contains("trinket2=,id=9102,ilevel=639"));
+        assert!(generated_input.contains("trinket2=,id=9103,ilevel=620"));
+        assert!(!generated_input.contains("trinket2=,id=9102,ilevel=639"));
         assert!(combo_metadata.values().all(|meta| {
             meta.iter().any(|entry| {
                 entry.get("heatmap_kind") == Some(&Value::String("trinket".to_string()))
             })
         }));
+        assert!(combo_metadata.values().all(|meta| {
+            meta.iter()
+                .filter(|entry| entry.get("slot").and_then(Value::as_str).is_some())
+                .filter(|entry| {
+                    entry
+                        .get("slot")
+                        .and_then(Value::as_str)
+                        .is_some_and(|slot| slot.starts_with("trinket"))
+                })
+                .filter(|entry| entry.get("origin").and_then(Value::as_str) != Some("equipped"))
+                .all(|entry| entry.get("current_season").and_then(Value::as_bool) == Some(true))
+        }));
+
+        let (_, legacy_combo_count, legacy_metadata) = build_heatmap_profileset_input(
+            "warrior=\"Tester\"\nspec=fury\ntrinket1=id=9000,ilevel=619\ntrinket2=id=9003,ilevel=615\n",
+            "warrior",
+            true,
+            false,
+            620,
+            "raid",
+            "trinket1",
+            "auto",
+            false,
+            true,
+        )
+        .expect("trinket heatmap input with legacy sources");
+        assert_eq!(legacy_combo_count, 3);
+        assert_eq!(legacy_metadata.len(), 3);
 
         class_snapshot.restore();
         state_snapshot.restore();
@@ -652,6 +695,7 @@ mod tests {
             "",
             "auto",
             false,
+            false,
         )
         .expect("tier heatmap input");
 
@@ -681,6 +725,8 @@ fn append_fallback_trinkets_from_encounter_drops(
     merged_drop_trinkets: &mut Vec<Value>,
     active_spec_id: Option<u64>,
     source_scope: &str,
+    target_ilevel: i64,
+    include_legacy_trinkets: bool,
     ignore_spec_restrictions: bool,
     selected_role_pools: &HashSet<TrinketRolePool>,
 ) {
@@ -694,8 +740,10 @@ fn append_fallback_trinkets_from_encounter_drops(
     let instances = crate::item_db::instances();
     let mut raid_dungeon_encounters: HashSet<i64> = HashSet::new();
     let mut encounter_is_dungeon: HashMap<i64, bool> = HashMap::new();
+    let mut encounter_instance_ids: HashMap<i64, i64> = HashMap::new();
+    let mut resolved_trinkets_by_instance: HashMap<i64, Vec<Value>> = HashMap::new();
     let mplus_ids = mplus_rotation_instance_ids();
-    for inst in instances {
+    for inst in &instances {
         let itype = inst.get("type").and_then(|v| v.as_str()).unwrap_or("");
         if itype != "raid" && itype != "dungeon" {
             continue;
@@ -711,6 +759,9 @@ fn append_fallback_trinkets_from_encounter_drops(
                 if let Some(eid) = enc.get("id").and_then(|v| v.as_i64()) {
                     raid_dungeon_encounters.insert(eid);
                     encounter_is_dungeon.insert(eid, itype == "dungeon");
+                    if let Some(instance_id) = inst.get("id").and_then(|v| v.as_i64()) {
+                        encounter_instance_ids.insert(eid, instance_id);
+                    }
                 }
             }
         }
@@ -735,9 +786,42 @@ fn append_fallback_trinkets_from_encounter_drops(
             {
                 continue;
             }
+            let current_season = encounter_instance_ids
+                .get(&eid)
+                .and_then(|instance_id| {
+                    instances
+                        .iter()
+                        .find(|inst| inst.get("id").and_then(|v| v.as_i64()) == Some(*instance_id))
+                })
+                .and_then(|inst| inst.get("current_season"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
+            if !include_legacy_trinkets && !current_season {
+                continue;
+            }
             if !seen_item_ids.insert(item.id) {
                 continue;
             }
+            let resolved_item = encounter_instance_ids.get(&eid).and_then(|instance_id| {
+                let trinkets = resolved_trinkets_by_instance
+                    .entry(*instance_id)
+                    .or_insert_with(|| {
+                        crate::game_data::get_instance_drops(*instance_id, None, None)
+                            .and_then(|drops| {
+                                drops
+                                    .get("Trinket")
+                                    .and_then(|value| value.as_array())
+                                    .cloned()
+                            })
+                            .unwrap_or_default()
+                    });
+                trinkets
+                    .iter()
+                    .find(|candidate| {
+                        candidate.get("item_id").and_then(|v| v.as_u64()) == Some(item.id)
+                    })
+                    .cloned()
+            });
             let specs = item.restriction_ids();
             if !item_specs_match_active_spec(&specs, active_spec_id, ignore_spec_restrictions) {
                 continue;
@@ -745,14 +829,29 @@ fn append_fallback_trinkets_from_encounter_drops(
             if !item_specs_match_role_pools(&specs, selected_role_pools) {
                 continue;
             }
-            merged_drop_trinkets.push(json!({
-                "item_id": item.id,
-                "name": item.name,
-                "icon": item.icon,
-                "quality": item.quality,
-                "ilevel": item.base_ilevel.unwrap_or(0),
-                "specs": specs,
-            }));
+            let mut fallback = resolved_item.unwrap_or_else(|| {
+                json!({
+                    "item_id": item.id,
+                    "name": item.name,
+                    "icon": item.icon,
+                    "quality": item.quality,
+                    "ilevel": item.base_ilevel.unwrap_or(0),
+                    "specs": specs,
+                })
+            });
+            let has_upgrade_metadata = ["difficulty_info", "dungeon_info"].iter().any(|key| {
+                fallback
+                    .get(*key)
+                    .and_then(|value| value.as_object())
+                    .is_some_and(|entries| !entries.is_empty())
+            });
+            if !has_upgrade_metadata
+                && target_ilevel > fallback.get("ilevel").and_then(|v| v.as_i64()).unwrap_or(0)
+            {
+                fallback["ilevel"] = json!(target_ilevel);
+            }
+            fallback["current_season"] = json!(current_season);
+            merged_drop_trinkets.push(fallback);
         }
     }
 }
@@ -768,6 +867,7 @@ fn build_heatmap_profileset_input(
     heatmap_lock_trinket_slot: &str,
     heatmap_role_pools: &str,
     heatmap_ignore_spec_restrictions: bool,
+    heatmap_include_legacy_trinkets: bool,
 ) -> MatrixBuildResult {
     let parse_result = addon_parser::parse_simc_input(simc_input);
     let base_profile = parse_result.base_profile.clone();
@@ -846,9 +946,37 @@ fn build_heatmap_profileset_input(
             &mut merged_drop_trinkets,
             active_spec_id,
             heatmap_trinket_sources,
+            target_ilevel,
+            heatmap_include_legacy_trinkets,
             heatmap_ignore_spec_restrictions,
             &selected_role_pools,
         );
+
+        if !heatmap_include_legacy_trinkets {
+            merged_drop_trinkets.retain(|trinket| {
+                trinket
+                    .get("current_season")
+                    .and_then(|value| value.as_bool())
+                    .unwrap_or(true)
+            });
+        }
+
+        let current_season_by_item: HashMap<u64, bool> = merged_drop_trinkets
+            .iter()
+            .filter_map(|trinket| {
+                let item_id = trinket.get("item_id").and_then(|value| value.as_u64())?;
+                let current_season = trinket
+                    .get("current_season")
+                    .and_then(|value| value.as_bool())?;
+                Some((item_id, current_season))
+            })
+            .fold(HashMap::new(), |mut seasons, (item_id, current_season)| {
+                seasons
+                    .entry(item_id)
+                    .and_modify(|known| *known |= current_season)
+                    .or_insert(current_season);
+                seasons
+            });
 
         let mut drop_specs_by_item: HashMap<u64, Vec<u64>> = HashMap::new();
         for trinket in &merged_drop_trinkets {
@@ -991,7 +1119,7 @@ fn build_heatmap_profileset_input(
                     .get("quality")
                     .and_then(|v| v.as_i64())
                     .unwrap_or(item_quality);
-                let item = make_resolved_item(
+                let mut item = make_resolved_item(
                     "trinket",
                     item_id,
                     ResolvedItemSeed {
@@ -1004,6 +1132,10 @@ fn build_heatmap_profileset_input(
                     crate::types::ItemOrigin::Bags,
                     12,
                 );
+                item.current_season = current_season_by_item
+                    .get(&item_id)
+                    .copied()
+                    .or_else(|| trinket.get("current_season").and_then(|v| v.as_bool()));
                 add_variant(item);
 
                 // Also add a "max-upgraded" variant for this drop bonus when applicable.
@@ -1014,7 +1146,7 @@ fn build_heatmap_profileset_input(
                         let max_ilvl = crate::item_db::get_item_info(item_id, Some(&max_bonus))
                             .map(|i| i.ilevel)
                             .unwrap_or(ilvl);
-                        let upgraded = make_resolved_item(
+                        let mut upgraded = make_resolved_item(
                             "trinket",
                             item_id,
                             ResolvedItemSeed {
@@ -1027,6 +1159,10 @@ fn build_heatmap_profileset_input(
                             crate::types::ItemOrigin::Bags,
                             12,
                         );
+                        upgraded.current_season = current_season_by_item
+                            .get(&item_id)
+                            .copied()
+                            .or_else(|| trinket.get("current_season").and_then(|v| v.as_bool()));
                         add_variant(upgraded);
                     }
                 }
@@ -1056,7 +1192,7 @@ fn build_heatmap_profileset_input(
                 if ilvl <= 0 {
                     continue;
                 }
-                let item = make_resolved_item(
+                let mut item = make_resolved_item(
                     "trinket",
                     item_id,
                     ResolvedItemSeed {
@@ -1069,6 +1205,10 @@ fn build_heatmap_profileset_input(
                     crate::types::ItemOrigin::Bags,
                     12,
                 );
+                item.current_season = current_season_by_item
+                    .get(&item_id)
+                    .copied()
+                    .or_else(|| trinket.get("current_season").and_then(|v| v.as_bool()));
                 add_variant(item);
             }
         }
@@ -1373,6 +1513,7 @@ pub(super) async fn create_trinket_tier_heatmap_sim(
         &options.heatmap_lock_trinket_slot,
         &options.heatmap_role_pools,
         options.heatmap_ignore_spec_restrictions,
+        options.heatmap_include_legacy_trinkets,
     ) {
         Ok(v) => v,
         Err(detail) => return HttpResponse::BadRequest().json(json!({ "detail": detail })),

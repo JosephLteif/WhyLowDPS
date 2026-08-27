@@ -31,6 +31,7 @@ type DropItem = {
   ilevel?: number;
   specs?: number[];
   source_type?: string;
+  current_season?: boolean;
   mplus_rotation?: boolean;
   difficulty_info?: Record<string, { ilvl?: number; level?: number; max?: number; track?: string }>;
   dungeon_info?: Record<string, { ilvl?: number; level?: number; max?: number; track?: string }>;
@@ -71,6 +72,7 @@ interface UpgradeTrinketsSimAgainState {
   simMode?: TrinketSimMode;
   rolePool?: TrinketRolePool;
   ignoreSpecRestrictions?: boolean;
+  includeLegacyTrinkets?: boolean;
 }
 
 const SPEC_TO_CLASS_ID = new Map<number, number>([
@@ -319,6 +321,7 @@ export default function UpgradeTrinketsPage() {
   const [simMode, setSimMode] = useState<TrinketSimMode>('matrix');
   const [rolePool, setRolePool] = useState<TrinketRolePool>('auto');
   const [ignoreSpecRestrictions, setIgnoreSpecRestrictions] = useState(false);
+  const [includeLegacyTrinkets, setIncludeLegacyTrinkets] = useState(false);
   const [sourceTypes, setSourceTypes] = useState<SourceKey[]>(DEFAULT_SOURCE_TYPES);
   const [dropsBySource, setDropsBySource] = useState<Record<SourceKey, DropItem[]>>({});
   const [upgradeTracks, setUpgradeTracks] = useState<Record<string, TrackRow[]>>({});
@@ -354,6 +357,9 @@ export default function UpgradeTrinketsPage() {
     }
     if (typeof restored.ignoreSpecRestrictions === 'boolean') {
       setIgnoreSpecRestrictions(restored.ignoreSpecRestrictions);
+    }
+    if (typeof restored.includeLegacyTrinkets === 'boolean') {
+      setIncludeLegacyTrinkets(restored.includeLegacyTrinkets);
     }
   }, []);
 
@@ -505,13 +511,22 @@ export default function UpgradeTrinketsPage() {
       for (const item of dropsBySource[source] || []) {
         if (!item?.item_id) continue;
         if (source === 'dungeon' && item.mplus_rotation === false) continue;
+        if (!includeLegacyTrinkets && item.current_season === false) continue;
         if (!itemSpecsMatchActiveSpec(item.specs, activeSpecId, ignoreSpecRestrictions, specToClassId)) continue;
         if (!ignoreSpecRestrictions && !itemSpecsMatchRole(item.specs, selectedRoles)) continue;
         if (!byItem.has(item.item_id)) byItem.set(item.item_id, item);
       }
     }
     return [...byItem.values()];
-  }, [selectedSources, dropsBySource, activeSpecId, ignoreSpecRestrictions, selectedRoles, specToClassId]);
+  }, [
+    selectedSources,
+    dropsBySource,
+    activeSpecId,
+    ignoreSpecRestrictions,
+    includeLegacyTrinkets,
+    selectedRoles,
+    specToClassId,
+  ]);
 
   const ilvlTrackHints = useMemo(() => {
     const map = new Map<number, Set<string>>();
@@ -693,8 +708,17 @@ export default function UpgradeTrinketsPage() {
         simMode === 'lock_trinket1' ? 'trinket1' : simMode === 'lock_trinket2' ? 'trinket2' : '',
       heatmap_role_pools: rolePool,
       heatmap_ignore_spec_restrictions: ignoreSpecRestrictions,
+      heatmap_include_legacy_trinkets: includeLegacyTrinkets,
     }),
-    [simcInput, targetIlevel, sourceScope, simMode, rolePool, ignoreSpecRestrictions]
+    [
+      simcInput,
+      targetIlevel,
+      sourceScope,
+      simMode,
+      rolePool,
+      ignoreSpecRestrictions,
+      includeLegacyTrinkets,
+    ]
   );
 
   const validate = useCallback(() => {
@@ -729,6 +753,7 @@ export default function UpgradeTrinketsPage() {
         simMode,
         rolePool,
         ignoreSpecRestrictions,
+        includeLegacyTrinkets,
       }),
     },
   });
@@ -973,6 +998,21 @@ export default function UpgradeTrinketsPage() {
             ))}
           </div>
         </div>
+
+        <label className="flex min-h-12 items-center justify-between rounded-md border border-zinc-700 bg-zinc-900/70 px-3 py-2.5">
+          <span className="min-w-0">
+            <span className="block text-zinc-100">Include Old-Season / Turbulent Trinkets</span>
+            <span className="block text-[11px] text-zinc-400">
+              Off by default: use only trinkets from the current season raid and dungeon rotation.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            checked={includeLegacyTrinkets}
+            onChange={(e) => setIncludeLegacyTrinkets(e.target.checked)}
+            className="h-5 w-5 shrink-0 accent-gold"
+          />
+        </label>
 
         <label className="flex min-h-12 items-center justify-between rounded-md border border-zinc-700 bg-zinc-900/70 px-3 py-2.5">
           <span className="text-zinc-100">Sim All Trinkets Regardless of Spec Drop</span>

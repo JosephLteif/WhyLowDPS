@@ -96,6 +96,50 @@ pub fn generate_top_gear_input_with_talents(
     catalyst_charges: Option<u32>,
     consumables: Option<&TopGearConsumableMatrix>,
 ) -> ProfilesetResult {
+    generate_top_gear_input_with_talents_mode(
+        base_profile,
+        items_by_slot,
+        selected_items,
+        max_combos_override,
+        talent_builds,
+        catalyst_charges,
+        consumables,
+        true,
+    )
+}
+
+pub fn count_top_gear_combinations_with_talents(
+    base_profile: &str,
+    items_by_slot: &HashMap<String, Vec<ResolvedItem>>,
+    selected_items: &HashMap<String, Vec<String>>,
+    max_combos_override: Option<usize>,
+    talent_builds: &[(String, String)],
+    catalyst_charges: Option<u32>,
+    consumables: Option<&TopGearConsumableMatrix>,
+) -> crate::error::Result<usize> {
+    let (_, combo_count, _) = generate_top_gear_input_with_talents_mode(
+        base_profile,
+        items_by_slot,
+        selected_items,
+        max_combos_override,
+        talent_builds,
+        catalyst_charges,
+        consumables,
+        false,
+    )?;
+    Ok(combo_count)
+}
+
+fn generate_top_gear_input_with_talents_mode(
+    base_profile: &str,
+    items_by_slot: &HashMap<String, Vec<ResolvedItem>>,
+    selected_items: &HashMap<String, Vec<String>>,
+    max_combos_override: Option<usize>,
+    talent_builds: &[(String, String)],
+    catalyst_charges: Option<u32>,
+    consumables: Option<&TopGearConsumableMatrix>,
+    include_profileset_input: bool,
+) -> ProfilesetResult {
     let (base_lines, equipped_gear, talents_string, spec) =
         parser::parse_base_profile(base_profile);
     let mut slot_item_lists =
@@ -210,6 +254,10 @@ pub fn generate_top_gear_input_with_talents(
 
     if gear_combo_count == 0 && effective_talents.len() <= 1 {
         return Ok((base_profile.to_string(), 0, HashMap::new()));
+    }
+
+    if !include_profileset_input {
+        return Ok((String::new(), total_combo_count, HashMap::new()));
     }
 
     let mut lines = Vec::new();

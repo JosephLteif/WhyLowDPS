@@ -668,7 +668,7 @@ export default function TopGearPage() {
     setComboError('');
 
     const controller = new AbortController();
-    (async () => {
+    const calculateComboCount = async () => {
       try {
         const useMatrix = isMultiConsumablesEnabledNow();
         const storedFlasks = filterMatrixTokens(
@@ -759,9 +759,13 @@ export default function TopGearPage() {
           setComboError('Failed to calculate combinations. Try selecting fewer items.');
         }
       }
-    })();
+    };
+    const timer = window.setTimeout(() => {
+      void calculateComboCount();
+    }, 250);
 
     return () => {
+      window.clearTimeout(timer);
       controller.abort();
     };
   }, [

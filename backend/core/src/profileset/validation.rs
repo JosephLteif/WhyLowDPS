@@ -86,6 +86,34 @@ pub fn validate_item_limits(gear_set: &HashMap<String, ResolvedItem>) -> bool {
     true
 }
 
+pub fn validate_item_limits_with_cache(
+    gear_set: &HashMap<String, ResolvedItem>,
+    category_cache: &HashMap<Vec<u64>, HashMap<u64, u64>>,
+) -> bool {
+    let mut category_counts: HashMap<u64, u64> = HashMap::new();
+    let mut category_limits: HashMap<u64, u64> = HashMap::new();
+
+    for item in gear_set.values() {
+        if let Some(categories) = category_cache.get(&item.bonus_ids) {
+            for (&cat_id, &max_qty) in categories {
+                *category_counts.entry(cat_id).or_insert(0) += 1;
+                category_limits.insert(cat_id, max_qty);
+            }
+        } else {
+            for (cat_id, max_qty) in game_data::get_item_limit_categories(&item.bonus_ids) {
+                *category_counts.entry(cat_id).or_insert(0) += 1;
+                category_limits.insert(cat_id, max_qty);
+            }
+        }
+    }
+
+    category_counts.iter().all(|(cat_id, count)| {
+        category_limits
+            .get(cat_id)
+            .is_none_or(|limit| count <= limit)
+    })
+}
+
 pub fn main_hand_is_two_hand(gear_set: &HashMap<String, ResolvedItem>, spec: &str) -> bool {
     if spec == "fury" {
         return false;
@@ -251,6 +279,9 @@ mod tests {
 
         let within_limit = HashMap::from([("head".to_string(), first)]);
         assert!(validate_item_limits(&within_limit));
+
+        let cache = HashMap::from([(vec![7001], HashMap::from([(9, 1)]))]);
+        assert!(!validate_item_limits_with_cache(&over_limit, &cache));
 
         snapshot.restore();
     }

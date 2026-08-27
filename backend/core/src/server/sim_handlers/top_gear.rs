@@ -6,7 +6,10 @@ struct TopGearGeneration {
     combo_metadata: HashMap<String, Vec<Value>>,
 }
 
-fn generate_top_gear_profilesets(req: &TopGearRequest) -> crate::error::Result<TopGearGeneration> {
+fn generate_top_gear_profilesets(
+    req: &TopGearRequest,
+    include_profileset_input: bool,
+) -> crate::error::Result<TopGearGeneration> {
     let mut simc_input = if req.max_upgrade {
         game_data::upgrade_simc_input(&req.simc_input)
     } else {
@@ -65,7 +68,7 @@ fn generate_top_gear_profilesets(req: &TopGearRequest) -> crate::error::Result<T
         .collect();
 
     let consumables = top_gear_consumables_from_options(&req.options);
-    let (generated_input, combo_count, combo_metadata) =
+    let (generated_input, combo_count, combo_metadata) = if include_profileset_input {
         profileset_generator::generate_top_gear_input_with_talents(
             &base_profile,
             &items_by_slot,
@@ -74,7 +77,19 @@ fn generate_top_gear_profilesets(req: &TopGearRequest) -> crate::error::Result<T
             &talent_builds,
             catalyst_charges,
             consumables.as_ref(),
+        )?
+    } else {
+        let combo_count = profileset_generator::count_top_gear_combinations_with_talents(
+            &base_profile,
+            &items_by_slot,
+            &req.selected_items,
+            req.max_combinations,
+            &talent_builds,
+            catalyst_charges,
+            consumables.as_ref(),
         )?;
+        (String::new(), combo_count, HashMap::new())
+    };
 
     Ok(TopGearGeneration {
         generated_input,
@@ -112,7 +127,7 @@ pub(in crate::server) async fn create_top_gear_sim(
         generated_input,
         combo_count,
         combo_metadata,
-    } = match generate_top_gear_profilesets(&req) {
+    } = match generate_top_gear_profilesets(&req, true) {
         Ok(r) => r,
         Err(e) => {
             return HttpResponse::BadRequest().json(json!({"detail": e.to_string()}));
@@ -189,7 +204,7 @@ pub(in crate::server) async fn create_top_gear_sim(
 pub(in crate::server) async fn get_top_gear_combo_count(
     req: web::Json<TopGearRequest>,
 ) -> HttpResponse {
-    match generate_top_gear_profilesets(&req) {
+    match generate_top_gear_profilesets(&req, false) {
         Ok(generation) => HttpResponse::Ok().json(json!({
             "combo_count": generation.combo_count,
             "limit_reached": false

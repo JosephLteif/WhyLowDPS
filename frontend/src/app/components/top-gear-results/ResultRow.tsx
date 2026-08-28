@@ -114,6 +114,15 @@ function labelsEqual(left?: string | null, right?: string | null): boolean {
   return String(left || '').trim().toLowerCase() === String(right || '').trim().toLowerCase();
 }
 
+function reverseUpgradeTransition(label: string): string {
+  const segments = label
+    .split(/\s*->\s*/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  if (segments.length < 2) return label;
+  return `${segments[segments.length - 1]} -> ${segments[0]}`;
+}
+
 function collapseUpgradeLabelPath(upgradeLabel: string, equippedUpgradeLabel?: string | null): string {
   const segments = upgradeLabel
     .split('->')
@@ -154,18 +163,18 @@ function formatUpgradePreviewLabel(args: {
   const normalizedItemTier = normalizeUpgradeLabel(itemTierLevelLabel);
   if (!collapsed.includes('->') && normalizedCollapsedTarget) {
     if (normalizedEquippedTier && !labelsEqual(normalizedEquippedTier, normalizedCollapsedTarget)) {
-      return `${normalizedEquippedTier} -> ${normalizedCollapsedTarget}`;
+      return `${normalizedCollapsedTarget} -> ${normalizedEquippedTier}`;
     }
     if (normalizedItemTier && !labelsEqual(normalizedItemTier, normalizedCollapsedTarget)) {
-      return `${normalizedItemTier} -> ${normalizedCollapsedTarget}`;
+      return `${normalizedCollapsedTarget} -> ${normalizedItemTier}`;
     }
   }
-  if (collapsed.includes('->')) return collapsed;
+  if (collapsed.includes('->')) return reverseUpgradeTransition(collapsed);
   const target = parseTierLevelFromUpgrade(collapsed);
   if (!target) return collapsed;
   const levels = Number(upgradeLevels || 0);
   if (levels > 0 && target.level > levels) {
-    return `${target.tier} ${target.level - levels}/${target.max} -> ${target.tier} ${target.level}/${target.max}`;
+    return `${target.tier} ${target.level}/${target.max} -> ${target.tier} ${target.level - levels}/${target.max}`;
   }
   return collapsed;
 }

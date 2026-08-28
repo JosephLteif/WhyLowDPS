@@ -119,6 +119,15 @@ function labelsEqual(left?: string | null, right?: string | null): boolean {
   return String(left || '').trim().toLowerCase() === String(right || '').trim().toLowerCase();
 }
 
+function reverseUpgradeTransition(label: string): string {
+  const segments = label
+    .split(/\s*->\s*/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  if (segments.length < 2) return label;
+  return `${segments[segments.length - 1]} -> ${segments[0]}`;
+}
+
 function collapseUpgradeLabelPath(
   upgradeLabel: string,
   equippedUpgradeLabel?: string | null
@@ -168,7 +177,7 @@ function formatUpgradePreviewLabel({
   sourceType?: string | null;
 }): string {
   const collapsed = collapseUpgradeLabelPath(upgradeLabel, equippedUpgradeLabel);
-  if (collapsed.includes('->')) return collapsed;
+  if (collapsed.includes('->')) return reverseUpgradeTransition(collapsed);
   if (equippedIlevel <= 0 || itemIlevel <= 0 || equippedIlevel === itemIlevel) return collapsed;
 
   const target = parseTrackLevel(collapsed);
@@ -191,7 +200,7 @@ function formatUpgradePreviewLabel({
   const previousLevel = target.level - inferredLevelDelta;
 
   return previousLevel > 0 && previousLevel !== target.level
-    ? `${target.track} ${previousLevel}/${target.max} -> ${target.track} ${target.level}/${target.max}`
+    ? `${target.track} ${target.level}/${target.max} -> ${target.track} ${previousLevel}/${target.max}`
     : collapsed;
 }
 

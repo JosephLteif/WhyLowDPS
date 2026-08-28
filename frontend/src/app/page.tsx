@@ -81,6 +81,7 @@ import { fetchReadiness, type ReadinessSnapshot } from './lib/readiness';
 const LOCAL_MAIN_CHARACTER_KEY = 'whylowdps_main_character';
 const LOCAL_TRACKED_CHARACTERS_KEY = 'whylowdps_tracked_characters';
 const LOCAL_QUICK_LINKS_KEY = 'whylowdps_quick_links';
+const LOCAL_QUICK_LINKS_HEIGHT_KEY = 'whylowdps_quick_links_height';
 const LOCAL_DASHBOARD_WIDGETS_KEY = 'whylowdps_dashboard_widgets';
 const LOCAL_DASHBOARD_WIDGET_SIZES_KEY = 'whylowdps_dashboard_widget_sizes';
 const LOCAL_DASHBOARD_STATS_WIDGET_KEY = 'whylowdps_dashboard_stats_cards';
@@ -90,6 +91,7 @@ type DashboardWidgetId =
   'stats' | 'activity' | 'quick-links' | 'tracked-characters' | 'system-health';
 type DashboardWidgetSize = 1 | 2 | 3;
 type StatCardId = 'active' | 'total' | 'history' | 'system';
+type QuickLinksHeight = 'compact' | 'standard' | 'tall' | 'extra-tall';
 
 const ACTIVITY_PERIOD_OPTIONS: { value: ActivityPeriod; label: string }[] = [
   { value: 'day', label: 'Daily' },
@@ -123,6 +125,13 @@ const DEFAULT_DASHBOARD_WIDGET_SIZES: Record<DashboardWidgetId, DashboardWidgetS
   );
 
 const STAT_CARD_ORDER: StatCardId[] = ['active', 'total', 'history', 'system'];
+
+const QUICK_LINKS_HEIGHT_OPTIONS = [
+  { value: 'compact', label: 'Compact', className: 'h-64' },
+  { value: 'standard', label: 'Standard', className: 'h-80' },
+  { value: 'tall', label: 'Tall', className: 'h-[32rem]' },
+  { value: 'extra-tall', label: 'Extra tall', className: 'h-[48rem]' },
+] as const satisfies { value: QuickLinksHeight; label: string; className: string }[];
 
 const QUICK_LINK_ICON_OPTIONS = [
   { value: 'activity', label: 'Activity', Icon: Activity },
@@ -221,6 +230,10 @@ function normalizeExternalUrl(value: string): string | null {
   } catch {
     return null;
   }
+}
+
+function isQuickLinksHeight(value: string): value is QuickLinksHeight {
+  return QUICK_LINKS_HEIGHT_OPTIONS.some((option) => option.value === value);
 }
 
 function isLightModeBlockedHref(href: string): boolean {
@@ -536,6 +549,8 @@ export default function Home() {
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [draggedTrackedIndex, setDraggedTrackedIndex] = useState<number | null>(null);
   const [dragOverTrackedIndex, setDragOverTrackedIndex] = useState<number | null>(null);
+  const [draggedQuickLinkIndex, setDraggedQuickLinkIndex] = useState<number | null>(null);
+  const [dragOverQuickLinkIndex, setDragOverQuickLinkIndex] = useState<number | null>(null);
   const [dragPointer, setDragPointer] = useState<{
     x: number;
     y: number;
@@ -546,6 +561,7 @@ export default function Home() {
     color: string;
   } | null>(null);
   const [quickLinks, setQuickLinks] = useState<QuickLink[]>(DEFAULT_QUICK_LINKS);
+  const [quickLinksHeight, setQuickLinksHeight] = useState<QuickLinksHeight>('standard');
   const [quickLinksEditMode, setQuickLinksEditMode] = useState(false);
   const [showQuickLinkAddMenu, setShowQuickLinkAddMenu] = useState(false);
   const [showCustomQuickLinkForm, setShowCustomQuickLinkForm] = useState(false);
@@ -554,6 +570,7 @@ export default function Home() {
   const [customQuickLinkIcon, setCustomQuickLinkIcon] = useState<QuickLinkIconName>('link');
   const [customQuickLinkError, setCustomQuickLinkError] = useState<string | null>(null);
   const draggedTrackedIndexRef = useRef<number | null>(null);
+  const draggedQuickLinkIndexRef = useRef<number | null>(null);
   const quickLinkAddMenuRef = useRef<HTMLDivElement | null>(null);
   const dashboardAddMenuRef = useRef<HTMLDivElement | null>(null);
   const draggingWidgetIdRef = useRef<DashboardWidgetId | null>(null);
@@ -582,6 +599,11 @@ export default function Home() {
     offsetY: number;
     label: string;
     color: string;
+  } | null>(null);
+  const pendingQuickLinkDragRef = useRef<{
+    idx: number;
+    startX: number;
+    startY: number;
   } | null>(null);
 
   const loadAll = useCallback(async () => {
@@ -644,6 +666,15 @@ export default function Home() {
       setQuickLinks(links.length > 0 ? links : DEFAULT_QUICK_LINKS);
     } catch {
       setQuickLinks(DEFAULT_QUICK_LINKS);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LOCAL_QUICK_LINKS_HEIGHT_KEY);
+      if (raw && isQuickLinksHeight(raw)) setQuickLinksHeight(raw);
+    } catch {
+      setQuickLinksHeight('standard');
     }
   }, []);
 
@@ -873,6 +904,13 @@ export default function Home() {
     }
   }, []);
 
+  const persistQuickLinksHeight = useCallback((next: QuickLinksHeight) => {
+    setQuickLinksHeight(next);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(LOCAL_QUICK_LINKS_HEIGHT_KEY, next);
+    }
+  }, []);
+
   const addableQuickLinks = useMemo(() => {
     const currentHrefs = new Set(quickLinks.map((link) => link.href));
     return QUICK_LINK_OPTIONS.filter(
@@ -890,6 +928,25 @@ export default function Home() {
       if (quickLinks.some((item) => item.href === link.href)) return;
       persistQuickLinks([...quickLinks, link]);
       setShowQuickLinkAddMenu(false);
+    },
+    [persistQuickLinks, quickLinks]
+  );
+
+  const reorderQuickLinks = useCallback(
+    (from: number, to: number) => {
+      if (
+        from === to ||
+        from < 0 ||
+        to < 0 ||
+        from >= quickLinks.length ||
+        to >= quickLinks.length
+      ) {
+        return;
+      }
+      const next = [...quickLinks];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      persistQuickLinks(next);
     },
     [persistQuickLinks, quickLinks]
   );
@@ -1149,6 +1206,36 @@ export default function Home() {
   }, [draggedTrackedIndex]);
 
   useEffect(() => {
+    draggedQuickLinkIndexRef.current = draggedQuickLinkIndex;
+  }, [draggedQuickLinkIndex]);
+
+  useEffect(() => {
+    const onPointerMove = (event: PointerEvent) => {
+      if (draggedQuickLinkIndexRef.current != null || !pendingQuickLinkDragRef.current) return;
+      const pending = pendingQuickLinkDragRef.current;
+      if (Math.hypot(event.clientX - pending.startX, event.clientY - pending.startY) < 6) return;
+      setDraggedQuickLinkIndex(pending.idx);
+      setDragOverQuickLinkIndex(pending.idx);
+      pendingQuickLinkDragRef.current = null;
+    };
+
+    const onPointerUp = () => {
+      pendingQuickLinkDragRef.current = null;
+      setDraggedQuickLinkIndex(null);
+      setDragOverQuickLinkIndex(null);
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+    };
+  }, []);
+
+  useEffect(() => {
     const onPointerMove = (e: PointerEvent) => {
       if (draggedTrackedIndexRef.current == null && pendingDragRef.current) {
         const p = pendingDragRef.current;
@@ -1337,6 +1424,16 @@ export default function Home() {
   };
   const statsWidgetSize = dashboardWidgetSizes.stats || 3;
   const trackedWidgetSize = dashboardWidgetSizes['tracked-characters'] || 3;
+  const quickLinksWidgetSize = dashboardWidgetSizes['quick-links'] || 1;
+  const quickLinksHeightClass =
+    QUICK_LINKS_HEIGHT_OPTIONS.find((option) => option.value === quickLinksHeight)?.className ||
+    'h-80';
+  const quickLinksGridClass =
+    quickLinksWidgetSize === 1
+      ? 'grid-cols-1'
+      : quickLinksWidgetSize === 2
+        ? 'grid-cols-1 md:grid-cols-2'
+        : 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3';
   const statsCompact = statsWidgetSize === 1;
   const trackedCompact = trackedWidgetSize === 1;
 
@@ -1663,7 +1760,10 @@ export default function Home() {
         {renderWidgetShell(
           'quick-links',
           <>
-            <section className="card flex h-full min-h-0 flex-col p-4">
+            <section
+              data-quick-links-height={quickLinksHeight}
+              className={`card flex min-h-0 flex-col p-4 ${quickLinksHeightClass}`}
+            >
               <div className="mb-3 flex items-center justify-between gap-2">
                 <h2 className="text-sm font-semibold text-zinc-200">Quick Links</h2>
                 <div className="flex items-center gap-2">
@@ -1806,6 +1906,10 @@ export default function Home() {
                     onClick={() => {
                       setQuickLinksEditMode((v) => !v);
                       setShowQuickLinkAddMenu(false);
+                      resetCustomQuickLinkForm();
+                      pendingQuickLinkDragRef.current = null;
+                      setDraggedQuickLinkIndex(null);
+                      setDragOverQuickLinkIndex(null);
                     }}
                     className={`inline-flex h-7 w-7 items-center justify-center rounded-md border transition-colors ${
                       quickLinksEditMode
@@ -1821,13 +1925,72 @@ export default function Home() {
                   </button>
                 </div>
               </div>
+              {quickLinksEditMode && (
+                <div className="mb-3 flex flex-wrap items-center gap-1 rounded-lg border border-white/10 bg-black/20 p-1.5">
+                  <span className="px-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                    Height
+                  </span>
+                  {QUICK_LINKS_HEIGHT_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => persistQuickLinksHeight(option.value)}
+                      aria-pressed={quickLinksHeight === option.value}
+                      className={`rounded border px-2 py-1 text-[11px] font-semibold transition-colors ${
+                        quickLinksHeight === option.value
+                          ? 'border-gold/50 bg-gold/15 text-gold'
+                          : 'border-white/10 bg-black/20 text-zinc-400 hover:bg-white/10 hover:text-zinc-200'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              )}
               <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-                <div className="space-y-2">
+                <div className={`grid gap-2 ${quickLinksGridClass}`}>
                   {visibleQuickLinks.map((link, index) => {
                     const className =
                       'flex min-w-0 flex-1 items-center justify-between gap-2 rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-zinc-200 transition-colors hover:border-border-light hover:bg-surface';
                     return (
-                      <div key={`${link.href}-${index}`} className="flex items-center gap-2">
+                      <div
+                        key={link.href}
+                        data-quick-link-row={link.label}
+                        onPointerEnter={() => {
+                          if (!quickLinksEditMode) return;
+                          const currentDragged = draggedQuickLinkIndexRef.current;
+                          if (currentDragged == null || currentDragged === index) return;
+                          reorderQuickLinks(currentDragged, index);
+                          setDraggedQuickLinkIndex(index);
+                          setDragOverQuickLinkIndex(index);
+                        }}
+                        className={`flex min-w-0 items-center gap-2 rounded-md transition-colors ${
+                          draggedQuickLinkIndex === index ? 'opacity-40' : ''
+                        } ${
+                          dragOverQuickLinkIndex === index && draggedQuickLinkIndex !== index
+                            ? 'bg-gold/5 ring-1 ring-gold/40'
+                            : ''
+                        }`}
+                      >
+                        {quickLinksEditMode && (
+                          <button
+                            type="button"
+                            onPointerDown={(event) => {
+                              if (event.button !== 0) return;
+                              pendingQuickLinkDragRef.current = {
+                                idx: index,
+                                startX: event.clientX,
+                                startY: event.clientY,
+                              };
+                              event.preventDefault();
+                            }}
+                            className="inline-flex h-9 w-7 shrink-0 touch-none cursor-grab items-center justify-center rounded-md border border-white/10 bg-black/20 text-zinc-500 hover:bg-white/10 hover:text-zinc-200"
+                            title={`Drag ${link.label} to reorder`}
+                            aria-label={`Drag ${link.label} to reorder`}
+                          >
+                            <GripVertical className="h-4 w-4" strokeWidth={2} />
+                          </button>
+                        )}
                         {link.external ? (
                           <a
                             href={link.href}

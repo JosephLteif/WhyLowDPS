@@ -90,9 +90,40 @@ test('dashboard renders with mocked backend state', async ({ page }) => {
   await expect(page.getByRole('heading', { name: /Simulation Activity/ })).toBeVisible();
 });
 
+test('dashboard quick links can be reordered and persist their order', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Edit quick links' }).click();
+
+  const source = page.getByRole('button', { name: 'Drag Wowhead to reorder' });
+  const target = page.getByRole('button', { name: 'Drag Simulation History to reorder' });
+  const sourceBox = await source.boundingBox();
+  const targetBox = await target.boundingBox();
+  if (!sourceBox || !targetBox) throw new Error('Quick-link drag handles are not visible.');
+
+  await page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, {
+    steps: 8,
+  });
+  await page.mouse.up();
+
+  const rows = page.locator('[data-quick-link-row]');
+  await expect(rows.nth(3)).toHaveAttribute('data-quick-link-row', 'Wowhead');
+  await page.reload();
+  await expect(page.locator('[data-quick-link-row]').nth(3)).toHaveAttribute(
+    'data-quick-link-row',
+    'Wowhead'
+  );
+});
+
 test('dashboard can add and persist a custom quick link with an icon', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Edit quick links' }).click();
+  await page.getByRole('button', { name: 'Tall', exact: true }).click();
+  await expect(page.locator('[data-quick-links-height]')).toHaveAttribute(
+    'data-quick-links-height',
+    'tall'
+  );
   await page.getByRole('button', { name: 'Add quick link' }).click();
   await page.getByRole('button', { name: 'Add Custom URL' }).click();
   await page.getByLabel('Name').fill('Raid Helper');
@@ -106,6 +137,10 @@ test('dashboard can add and persist a custom quick link with an icon', async ({ 
 
   await page.reload();
   await expect(page.getByRole('link', { name: 'Raid Helper' })).toBeVisible();
+  await expect(page.locator('[data-quick-links-height]')).toHaveAttribute(
+    'data-quick-links-height',
+    'tall'
+  );
 });
 
 test('quick sim validates empty input and can submit pasted input', async ({ page }) => {

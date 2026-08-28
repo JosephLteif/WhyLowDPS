@@ -8,6 +8,7 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ### Changed
 
+- Top Gear now offers an Eligible quick selection that keeps equipped items and selects only alternatives valid for the active character, specialization, and item-level rules.
 - Dashboard Quick Links now include popular WoW tools and support custom http:// or https:// URLs with selectable icons, persisted locally and opened in a new tab.
 - Recent SimC exports in the History list now persist locally across reloads and navigation, while remaining limited to the 20 most recent profiles and clearable from the profile dropdown.
 - Upgrade Trinkets now default to current-season raid and dungeon sources, with an opt-in setting for old-season and Turbulent trinkets; excluded trinkets are removed before simulation combinations are generated.
@@ -17,6 +18,7 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ### Fixed
 
+- Rerunning a saved simulation now preserves its exact SimC input, options, item data, and specialized simulation metadata, then opens the new simulation's running page immediately instead of running only in the background.
 - Trinket heatmaps now use the selected target item level for fallback drops, so Myth 6/6 no longer simulates raw 108 item-level variants alongside 334 candidates.
 - Top Gear now keeps the combination count accurate when selecting all available gear items.
 - SimC exports restored or supplied outside the profile selector now automatically select the matching saved or recent profile.

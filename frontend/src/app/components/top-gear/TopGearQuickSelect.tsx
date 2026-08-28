@@ -13,6 +13,7 @@ interface TopGearQuickSelectProps {
   onToggleVault: () => void;
   onToggleCatalyst: () => void;
   onSelectAll: () => void;
+  onSelectAllEligible: () => void;
   onClear: () => void;
   comboBreakdown?: string | null;
 }
@@ -28,6 +29,7 @@ export default function TopGearQuickSelect({
   onToggleVault,
   onToggleCatalyst,
   onSelectAll,
+  onSelectAllEligible,
   onClear,
   comboBreakdown = null,
 }: TopGearQuickSelectProps) {
@@ -71,6 +73,14 @@ export default function TopGearQuickSelect({
           className={`${baseButtonClass} ${goldButtonClass}`}
         >
           All
+        </button>
+        <button
+          type="button"
+          onClick={onSelectAllEligible}
+          className={`${baseButtonClass} ${goldButtonClass}`}
+          title="Select all eligible items"
+        >
+          Eligible
         </button>
         <button
           type="button"

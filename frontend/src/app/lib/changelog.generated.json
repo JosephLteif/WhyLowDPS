@@ -1,11 +1,19 @@
 {
-  "contentRevision": "Unreleased-a65f81bc4765",
+  "contentRevision": "Unreleased-09959fa64435",
   "releases": [
     {
       "version": "Unreleased",
       "date": "",
       "title": "Upcoming changes",
       "entries": [
+        {
+          "category": "improvement",
+          "title": "Select only eligible Top Gear items",
+          "summary": "Top Gear now offers an Eligible quick selection that keeps equipped items and selects only alternatives valid for the active character, specialization, and item-level rules.",
+          "items": [
+            "Use Eligible in the Top Gear quick actions to leave off-spec and low-level alternatives unselected."
+          ]
+        },
         {
           "category": "improvement",
           "title": "Keep WoW tools and custom links one click away",
@@ -58,6 +66,14 @@
           "items": [
             "Pushes to `dev` publish the tested moving developer release.",
             "Stable releases can promote the tested developer build from the Release workflow."
+          ]
+        },
+        {
+          "category": "fix",
+          "title": "Rerun simulations with their original setup",
+          "summary": "Rerunning a saved simulation now reuses its exact SimC input, options, item data, and specialized simulation metadata, so reruns no longer start with an empty item selection.",
+          "items": [
+            "The new simulation opens on its running page immediately, keeping progress visible instead of running only in the background."
           ]
         },
         {

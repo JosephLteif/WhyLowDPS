@@ -8,6 +8,12 @@ Add new work under the `Unreleased` section. The release workflow promotes that 
 
 ### Improvements
 
+#### Select only eligible Top Gear items
+
+Top Gear now offers an Eligible quick selection that keeps equipped items and selects only alternatives valid for the active character, specialization, and item-level rules.
+
+- Use Eligible in the Top Gear quick actions to leave off-spec and low-level alternatives unselected.
+
 #### Keep WoW tools and custom links one click away
 
 The dashboard Quick Links widget now includes popular WoW tools such as Wowhead, Raidbots, WoWAnalyzer, Warcraft Logs, and Raider.IO, with clear icons and new-tab links.
@@ -51,6 +57,12 @@ The release pipeline now separates automated developer builds from stable releas
 - Stable releases can promote the tested developer build from the Release workflow.
 
 ### Bug fixes
+
+#### Rerun simulations with their original setup
+
+Rerunning a saved simulation now reuses its exact SimC input, options, item data, and specialized simulation metadata, so reruns no longer start with an empty item selection.
+
+- The new simulation opens on its running page immediately, keeping progress visible instead of running only in the background.
 
 #### Select restored SimC profiles automatically
 

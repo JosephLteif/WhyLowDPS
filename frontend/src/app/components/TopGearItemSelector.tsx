@@ -220,6 +220,19 @@ function clampUpgradeArrowChain(label: string): string {
   return previous && previous !== last ? `${previous} -> ${last}` : last;
 }
 
+function isLowLevelTopGearItem(item: ResolvedItem, groupItems: ResolvedItem[]): boolean {
+  const maxGroupIlevel = Math.max(
+    0,
+    ...groupItems.map((candidate) => Number(candidate.ilevel || 0))
+  );
+  const hasSeasonalItems = groupItems.some((candidate) => Number(candidate.season_id || 0) > 0);
+  return (
+    hasSeasonalItems &&
+    Number(item.season_id || 0) <= 0 &&
+    Number(item.ilevel || 0) <= maxGroupIlevel - 50
+  );
+}
+
 function formatCanonicalUpgradeLabel(
   selectedUpgradeRaw: string,
   equippedUpgradeRaw: string,
@@ -1185,20 +1198,11 @@ export default function TopGearItemSelector({
           }
         });
       });
-      const maxGroupIlevel = Math.max(
-        0,
-        ...equipped.map((item) => Number(item.ilevel || 0)),
-        ...alternatives.map((item) => Number(item.ilevel || 0))
-      );
-      const hasSeasonalItems = [...equipped, ...alternatives].some(
-        (item) => Number(item.season_id || 0) > 0
-      );
+      const groupItems = [...equipped, ...alternatives];
       const shouldHideAlternative = (item: ResolvedItem) => {
         const selected = selectedUids[item.slot]?.has(item.uid) || false;
         if (selected) return false;
-        const itemSeason = Number(item.season_id || 0);
-        const itemIlevel = Number(item.ilevel || 0);
-        return hasSeasonalItems && itemSeason <= 0 && itemIlevel <= maxGroupIlevel - 50;
+        return isLowLevelTopGearItem(item, groupItems);
       };
       const hiddenAlternatives = alternatives.filter(shouldHideAlternative);
       const visibleAlternatives =
@@ -1214,6 +1218,37 @@ export default function TopGearItemSelector({
       };
     }).filter((g) => g.equipped.length > 0 || g.alternatives.length > 0 || g.hiddenAlternativeCount > 0);
   }, [resolved, selectedUids, showAllLowLevelByGroup]);
+
+  const selectAllEligible = useCallback(() => {
+    const updated: Record<string, Set<string>> = {};
+
+    for (const group of DISPLAY_GROUPS) {
+      const groupItems = group.slots.flatMap((slot) => {
+        const slotRes = resolved.slots[slot];
+        return slotRes
+          ? [slotRes.equipped, ...slotRes.alternatives].filter(
+              (item): item is ResolvedItem => Boolean(item)
+            )
+          : [];
+      });
+
+      for (const slot of group.slots) {
+        const slotRes = resolved.slots[slot];
+        if (!slotRes) continue;
+
+        const eligible = new Set<string>();
+        if (slotRes.equipped) eligible.add(slotRes.equipped.uid);
+        for (const alternative of slotRes.alternatives) {
+          if (!alternative.off_spec && !isLowLevelTopGearItem(alternative, groupItems)) {
+            eligible.add(alternative.uid);
+          }
+        }
+        updated[slot] = eligible;
+      }
+    }
+
+    onSelectionChange(updated);
+  }, [onSelectionChange, resolved.slots]);
 
   const { vaultUids, catalystUids } = useMemo(() => {
     const vault: { uid: string; slot: string }[] = [];
@@ -2089,6 +2124,7 @@ export default function TopGearItemSelector({
       onToggleVault={() => toggleGroup(vaultUids)}
       onToggleCatalyst={() => toggleGroup(catalystUids)}
       onSelectAll={selectAll}
+      onSelectAllEligible={selectAllEligible}
       onClear={deselectAll}
     />
   );

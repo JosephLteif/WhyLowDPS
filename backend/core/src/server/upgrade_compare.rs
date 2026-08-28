@@ -38,13 +38,135 @@ fn resolve_simc_binary_for_request(
         }
     }
 }
-use crate::types::ResolvedItem;
+use crate::types::{ResolveGearResponse, ResolvedItem};
 
 /// Shared prep: parse SimC input, extract upgrade budget, build upgrade options per slot.
 struct PreparedUpgradeCompare {
     base_profile: String,
     upgraded_options_by_slot: HashMap<String, Vec<ResolvedItem>>,
     upgrade_budget: HashMap<u64, u64>,
+}
+
+/// Return the item level used for the same-slot upgrade discount.
+/// Rings and trinkets use the lower of their two equipped item levels. The
+/// same applies to two equipped one-handed weapons; a two-handed weapon uses
+/// its own slot level instead.
+fn upgrade_discount_ilevel(item: &ResolvedItem, resolved: &ResolveGearResponse) -> u64 {
+    let slot_names: Vec<&str> = match item.slot.as_str() {
+        "finger1" | "finger2" => vec!["finger1", "finger2"],
+        "trinket1" | "trinket2" => vec!["trinket1", "trinket2"],
+        "main_hand" | "off_hand" => vec!["main_hand", "off_hand"],
+        _ => vec![item.slot.as_str()],
+    };
+    let equipped: Vec<&ResolvedItem> = slot_names
+        .iter()
+        .filter_map(|slot| {
+            resolved
+                .slots
+                .get(*slot)
+                .and_then(|slot_res| slot_res.equipped.as_ref())
+        })
+        .filter(|equipped_item| equipped_item.ilevel > 0)
+        .collect();
+
+    if matches!(item.slot.as_str(), "finger1" | "finger2" | "trinket1" | "trinket2") {
+        let mut levels: Vec<i64> = equipped.iter().map(|equipped_item| equipped_item.ilevel).collect();
+        levels.sort_unstable_by(|a, b| b.cmp(a));
+        return levels.get(1).copied().unwrap_or(0) as u64;
+    }
+
+    if matches!(item.slot.as_str(), "main_hand" | "off_hand") {
+        let mut one_handed: Vec<i64> = equipped
+            .iter()
+            .filter(|equipped_item| equipped_item.inventory_type == 13)
+            .map(|equipped_item| equipped_item.ilevel)
+            .collect();
+        one_handed.sort_unstable_by(|a, b| b.cmp(a));
+        if let Some(level) = one_handed.get(1) {
+            return *level as u64;
+        }
+    }
+
+    equipped
+        .iter()
+        .map(|equipped_item| equipped_item.ilevel)
+        .max()
+        .unwrap_or(0) as u64
+}
+
+/// Apply the same-slot discount to an upgrade option's cumulative costs.
+fn discounted_upgrade_costs(
+    options: &[game_data::UpgradeOption],
+    target: &game_data::UpgradeOption,
+    discount_ilevel: u64,
+) -> HashMap<u64, u64> {
+    if discount_ilevel == 0 {
+        return target.cumulative_costs.clone();
+    }
+
+    let discounted_through = options
+        .iter()
+        .filter(|option| option.ilevel <= discount_ilevel && option.ilevel <= target.ilevel)
+        .max_by_key(|option| option.ilevel);
+
+    target
+        .cumulative_costs
+        .iter()
+        .filter_map(|(cid, amount)| {
+            let already_discounted = discounted_through
+                .and_then(|option| option.cumulative_costs.get(cid))
+                .copied()
+                .unwrap_or(0);
+            let remaining = amount.saturating_sub(already_discounted);
+            (remaining > 0).then_some((*cid, remaining))
+        })
+        .collect()
+}
+
+fn costs_to_json(costs: &HashMap<u64, u64>) -> Value {
+    json!(costs
+        .iter()
+        .map(|(cid, amount)| (cid.to_string(), *amount))
+        .collect::<HashMap<_, _>>())
+}
+
+fn upgrade_option_json(option: &game_data::UpgradeOption, costs: &HashMap<u64, u64>) -> Value {
+    json!({
+        "bonus_id": option.bonus_id,
+        "level": option.level,
+        "max": option.max_level,
+        "max_level": option.max_level,
+        "ilevel": option.ilevel,
+        "itemLevel": option.ilevel,
+        "quality": option.quality,
+        "name": option.name,
+        "fullName": option.name,
+        "cumulative_costs": costs_to_json(&option.cumulative_costs),
+        "costs": costs_to_json(costs),
+        "discounted": costs != &option.cumulative_costs,
+    })
+}
+
+fn currency_metadata(options: &[game_data::UpgradeOption]) -> HashMap<String, Value> {
+    let currency_ids: HashSet<u64> = options
+        .iter()
+        .flat_map(|option| option.cumulative_costs.keys().copied())
+        .collect();
+
+    currency_ids
+        .into_iter()
+        .map(|cid| {
+            let meta = game_data::get_currency_info(cid);
+            (
+                cid.to_string(),
+                json!({
+                    "id": cid,
+                    "name": meta.as_ref().map(|(name, _)| name.as_str()).unwrap_or(""),
+                    "icon": meta.as_ref().map(|(_, icon)| icon.as_str()).unwrap_or(""),
+                }),
+            )
+        })
+        .collect()
 }
 
 fn prepare_upgrade_compare(
@@ -98,6 +220,7 @@ fn prepare_upgrade_compare(
         if options.is_empty() {
             continue;
         }
+        let discount_ilevel = upgrade_discount_ilevel(source, &resolved);
 
         // Find the current level from the item's explicit track bonus.
         let current_level = options
@@ -119,13 +242,13 @@ fn prepare_upgrade_compare(
 
         if budget_mode != "ignore_budget" {
             candidate_opts.retain(|opt| {
+                let costs = discounted_upgrade_costs(&options, opt, discount_ilevel);
                 !opt.cumulative_costs.is_empty()
                     && opt
                         .cumulative_costs
                         .iter()
                         .any(|(cid, amt)| upgrade_currency_ids.contains(cid) && *amt > 0)
-                    && opt
-                        .cumulative_costs
+                    && costs
                         .iter()
                         .all(|(cid, amt)| upgrade_budget.get(cid).copied().unwrap_or(0) >= *amt)
             });
@@ -153,7 +276,7 @@ fn prepare_upgrade_compare(
             upgraded.origin = crate::types::ItemOrigin::Bags; // Marks as not baseline
             upgraded.bonus_ids = new_bonus_ids.clone();
             upgraded.ilevel = opt.ilevel as i64;
-            upgraded.upgrade_costs = opt.cumulative_costs.clone();
+            upgraded.upgrade_costs = discounted_upgrade_costs(&options, opt, discount_ilevel);
 
             let new_simc = bonus_re
                 .replace(&source.simc_string, |caps: &regex::Captures| {
@@ -220,7 +343,7 @@ pub(super) async fn get_upgrade_compare_prepare(req: web::Json<serde_json::Value
     let items_by_slot = resolve_to_items_by_slot(&resolved);
 
     let mut candidates: Vec<Value> = Vec::new();
-    let mut currency_ids: HashSet<u64> = upgrade_currency_ids;
+    let mut currency_ids: HashSet<u64> = upgrade_currency_ids.clone();
     let mut seen_candidate_items: HashSet<String> = HashSet::new();
 
     for slot in crate::types::class_data::GEAR_SLOTS {
@@ -248,16 +371,13 @@ pub(super) async fn get_upgrade_compare_prepare(req: web::Json<serde_json::Value
                 continue;
             }
 
-            // Find current level and its cumulative cost from the item's
-            // explicit track bonus. Items without a recognized track are not
-            // upgrade candidates; this avoids inferring previous seasons from
-            // item level alone.
+            // Find current level from the item's explicit track bonus. Items
+            // without a recognized track are not upgrade candidates; this
+            // avoids inferring previous seasons from item level alone.
             let mut current_level: u64 = 0;
-            let mut current_cumulative: HashMap<u64, u64> = HashMap::new();
             for opt in &options {
                 if item.bonus_ids.contains(&opt.bonus_id) {
                     current_level = opt.level;
-                    current_cumulative = opt.cumulative_costs.clone();
                     break;
                 }
             }
@@ -277,18 +397,18 @@ pub(super) async fn get_upgrade_compare_prepare(req: web::Json<serde_json::Value
 
             let max_upgrade = upgrades.last().unwrap();
             let target_ilevel = max_upgrade.ilevel;
+            let discount_ilevel = upgrade_discount_ilevel(item, &resolved);
+            let discounted_costs = discounted_upgrade_costs(&options, max_upgrade, discount_ilevel);
 
-            // Delta cost = target cumulative - current cumulative
-            let mut delta_costs: HashMap<String, u64> = HashMap::new();
-            for (cid, &target_amt) in &max_upgrade.cumulative_costs {
+            for cid in max_upgrade.cumulative_costs.keys() {
                 currency_ids.insert(*cid);
-                let current_amt = current_cumulative.get(cid).copied().unwrap_or(0);
-                let delta = target_amt.saturating_sub(current_amt);
-                if delta > 0 {
-                    delta_costs.insert(cid.to_string(), delta);
-                }
             }
-            let costs = json!(delta_costs);
+            let primary_currency_id = max_upgrade
+                .cumulative_costs
+                .keys()
+                .find(|cid| upgrade_currency_ids.contains(cid))
+                .or_else(|| max_upgrade.cumulative_costs.keys().next())
+                .copied();
 
             candidates.push(json!({
                 "uid": item.uid,
@@ -297,7 +417,9 @@ pub(super) async fn get_upgrade_compare_prepare(req: web::Json<serde_json::Value
                 "bonus_ids": item.bonus_ids,
                 "ilevel": item.ilevel,
                 "target_ilevel": target_ilevel,
-                "costs": costs,
+                "costs": costs_to_json(&discounted_costs),
+                "currency_id": primary_currency_id,
+                "discounted": discounted_costs != max_upgrade.cumulative_costs,
                 "is_equipped": item.origin == crate::types::ItemOrigin::Equipped,
             }));
         }
@@ -484,8 +606,22 @@ pub(super) async fn get_upgrade_options_handler(
         .filter_map(|s| s.trim().parse().ok())
         .collect();
 
+    let discount_ilevel = query
+        .get("discount_ilevel")
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(0);
     let options = game_data::get_upgrade_options(&bonus_ids);
-    HttpResponse::Ok().json(json!({ "options": options }))
+    let rendered_options: Vec<Value> = options
+        .iter()
+        .map(|option| {
+            let costs = discounted_upgrade_costs(&options, option, discount_ilevel);
+            upgrade_option_json(option, &costs)
+        })
+        .collect();
+    HttpResponse::Ok().json(json!({
+        "options": rendered_options,
+        "currencies": currency_metadata(&options),
+    }))
 }
 
 #[cfg(test)]
@@ -954,5 +1090,84 @@ mod tests {
         let payload: Value = serde_json::from_slice(&body).expect("json body");
         assert!(payload.get("options").is_some());
         assert!(payload.get("options").unwrap().is_array());
+    }
+
+    #[test]
+    fn upgrade_costs_use_the_lower_equipped_paired_slot_level_for_discount() {
+        let options = vec![
+            game_data::UpgradeOption {
+                level: 1,
+                max_level: 3,
+                ilevel: 600,
+                bonus_id: 101,
+                quality: 4,
+                name: "Hero 1/3".to_string(),
+                cumulative_costs: HashMap::new(),
+            },
+            game_data::UpgradeOption {
+                level: 2,
+                max_level: 3,
+                ilevel: 610,
+                bonus_id: 102,
+                quality: 4,
+                name: "Hero 2/3".to_string(),
+                cumulative_costs: HashMap::from([(3008, 15)]),
+            },
+            game_data::UpgradeOption {
+                level: 3,
+                max_level: 3,
+                ilevel: 620,
+                bonus_id: 103,
+                quality: 4,
+                name: "Hero 3/3".to_string(),
+                cumulative_costs: HashMap::from([(3008, 30)]),
+            },
+        ];
+        let equipped_ring = |slot: &str, ilevel: i64| crate::types::ResolvedItem {
+            slot: slot.to_string(),
+            ilevel,
+            origin: crate::types::ItemOrigin::Equipped,
+            ..Default::default()
+        };
+        let resolved = ResolveGearResponse {
+            character: crate::types::CharacterResolveInfo {
+                class_name: None,
+                spec: None,
+                can_dual_wield: false,
+                can_use_offhand: false,
+            },
+            base_profile: String::new(),
+            slots: HashMap::from([
+                (
+                    "finger1".to_string(),
+                    crate::types::SlotResolution {
+                        equipped: Some(equipped_ring("finger1", 620)),
+                        alternatives: Vec::new(),
+                    },
+                ),
+                (
+                    "finger2".to_string(),
+                    crate::types::SlotResolution {
+                        equipped: Some(equipped_ring("finger2", 610)),
+                        alternatives: Vec::new(),
+                    },
+                ),
+            ]),
+            excluded: Vec::new(),
+            talent_loadouts: Vec::new(),
+            catalyst_charges: None,
+        };
+        let item = crate::types::ResolvedItem {
+            slot: "finger1".to_string(),
+            origin: crate::types::ItemOrigin::Bags,
+            ..Default::default()
+        };
+
+        let discount_ilevel = upgrade_discount_ilevel(&item, &resolved);
+        assert_eq!(discount_ilevel, 610);
+        assert_eq!(
+            discounted_upgrade_costs(&options, &options[2], discount_ilevel).get(&3008),
+            Some(&15)
+        );
     }
 }

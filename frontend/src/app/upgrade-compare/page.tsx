@@ -36,6 +36,8 @@ interface PrepareCandidate {
   ilevel: number;
   target_ilevel: number;
   costs: Record<string, number>;
+  currency_id?: number | null;
+  discounted?: boolean;
   is_equipped: boolean;
 }
 
@@ -64,10 +66,13 @@ function getCurrencyIconUrl(iconName: string): string {
 
 function formatCosts(
   costs: Record<string, number>,
-  currencies: Record<string, CurrencyMeta>
+  currencies: Record<string, CurrencyMeta>,
+  discounted: boolean
 ): string {
-  const entries = Object.entries(costs).sort((a, b) => Number(a[0]) - Number(b[0]));
-  if (entries.length === 0) return 'no cost';
+  const entries = Object.entries(costs)
+    .filter(([, amount]) => amount > 0)
+    .sort((a, b) => Number(a[0]) - Number(b[0]));
+  if (entries.length === 0) return discounted ? 'Free (discounted)' : 'Cost unavailable';
   return entries
     .map(([cid, amount]) => {
       const name = currencies[cid]?.name;
@@ -354,7 +359,7 @@ export default function UpgradeComparePage() {
 
     const groups = new Map<number, PrepareCandidate[]>();
     for (const c of candidates) {
-      const cid = Object.keys(c.costs)
+      const cid = c.currency_id ?? Object.keys(c.costs)
         .map(Number)
         .find((id) => upgradeCurrencyIds.has(id));
       if (!cid) continue;
@@ -682,7 +687,7 @@ export default function UpgradeComparePage() {
                             },
                             { text: `${c.ilevel} -> ${c.target_ilevel}` },
                             {
-                              text: formatCosts(c.costs, effectiveCurrencies),
+                              text: formatCosts(c.costs, effectiveCurrencies, c.discounted === true),
                               color: 'text-gold/70',
                             },
                           ]}

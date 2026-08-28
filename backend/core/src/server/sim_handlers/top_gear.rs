@@ -6,6 +6,39 @@ struct TopGearGeneration {
     combo_metadata: HashMap<String, Vec<Value>>,
 }
 
+fn top_gear_currency_metadata(
+    combo_metadata: &HashMap<String, Vec<Value>>,
+    simc_input: &str,
+) -> HashMap<String, Value> {
+    let mut currency_ids: HashSet<u64> = crate::addon_parser::parse_upgrade_currencies(simc_input)
+        .keys()
+        .copied()
+        .collect();
+
+    for items in combo_metadata.values() {
+        for item in items {
+            let Some(costs) = item.get("upgrade_costs").and_then(Value::as_object) else {
+                continue;
+            };
+            currency_ids.extend(costs.keys().filter_map(|id| id.parse::<u64>().ok()));
+        }
+    }
+
+    currency_ids
+        .into_iter()
+        .map(|cid| {
+            let (name, icon) = crate::game_data::get_currency_info(cid).unwrap_or((
+                format!("Currency {}", cid),
+                "inv_misc_questionmark".to_string(),
+            ));
+            (
+                cid.to_string(),
+                json!({ "id": cid, "name": name, "icon": icon }),
+            )
+        })
+        .collect()
+}
+
 fn generate_top_gear_profilesets(
     req: &TopGearRequest,
     include_profileset_input: bool,
@@ -139,6 +172,8 @@ pub(in crate::server) async fn create_top_gear_sim(
         }));
     }
 
+    let currencies = top_gear_currency_metadata(&combo_metadata, &req.simc_input);
+
     let mut generated_input = inject_expert_fields(&generated_input, &req.options);
     generated_input = apply_shared_simc_options(&generated_input, &req.options, true);
 
@@ -170,6 +205,7 @@ pub(in crate::server) async fn create_top_gear_sim(
     let meta_json = serde_json::to_string(&json!({
         "_combo_metadata": combo_metadata,
         "_combo_count": combo_count,
+        "currencies": currencies,
     }))
     .unwrap_or_default();
 
@@ -256,6 +292,24 @@ mod tests {
 
     fn top_gear_request(value: serde_json::Value) -> TopGearRequest {
         serde_json::from_value(value).expect("top gear request")
+    }
+
+    #[test]
+    fn top_gear_currency_metadata_includes_cost_and_budget_currencies() {
+        let combo_metadata = HashMap::from([(
+            "Combo 1".to_string(),
+            vec![json!({ "upgrade_costs": { "3008": 12 } })],
+        )]);
+
+        let currencies = top_gear_currency_metadata(
+            &combo_metadata,
+            "# upgrade_currencies = c:3009:45",
+        );
+
+        assert_eq!(currencies["3008"]["id"].as_u64(), Some(3008));
+        assert_eq!(currencies["3009"]["id"].as_u64(), Some(3009));
+        assert!(currencies["3008"]["name"].is_string());
+        assert!(currencies["3008"]["icon"].is_string());
     }
 
     #[actix_web::test]

@@ -105,6 +105,8 @@ interface UpgradeOption {
   name: string;
   fullName: string;
   itemLevel: number;
+  costs?: Record<string, number>;
+  discounted?: boolean;
 }
 
 const DISPLAY_GROUPS: DisplayGroup[] = [
@@ -301,6 +303,7 @@ export default function TopGearItemSelector({
   const {
     setUpgradeMenuFor,
     upgradeOptions,
+    upgradeCurrencies,
     loadingUpgrades,
     isAddItemOpen,
     setAddItemOpen,
@@ -550,7 +553,7 @@ export default function TopGearItemSelector({
   );
 
   const addUpgradedCopy = useCallback(
-    (item: ResolvedItem, option: any) => {
+    (item: ResolvedItem, option: UpgradeOption) => {
       const currentUpgradeBonusId = upgradeOptions.find((o) =>
         item.bonus_ids.includes(o.bonus_id)
       )?.bonus_id;
@@ -603,6 +606,7 @@ export default function TopGearItemSelector({
           simc_string: newSimcString,
           ilevel: option.itemLevel,
           upgrade: upgradeLabel,
+          upgrade_costs: option.costs || {},
         };
         slotRes.alternatives = [...slotRes.alternatives, copy];
       }
@@ -2175,6 +2179,7 @@ export default function TopGearItemSelector({
         otherTierOptions={otherTierOptions}
         loadingOtherTierOptions={loadingOtherTierOptions}
         upgradeOptions={upgradeOptions}
+        upgradeCurrencies={upgradeCurrencies}
         loadingUpgrades={loadingUpgrades}
         onClose={() => setContextMenu(null)}
         onLoadUpgradeOptions={loadUpgradeOptions}

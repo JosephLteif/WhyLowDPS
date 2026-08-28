@@ -45,6 +45,7 @@ export interface ResolvedItem {
   embellishment_icon?: string;
   embellishment_bonus_ids?: number[];
   extra_effects?: string[];
+  upgrade_costs?: Record<string, number>;
   item_limit_categories?: Record<string, number>;
 }
 

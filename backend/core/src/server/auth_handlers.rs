@@ -8,14 +8,14 @@ use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation}
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
-#[cfg(not(feature = "desktop"))]
+#[cfg(any(test, not(feature = "desktop")))]
 use std::collections::HashMap;
 #[cfg(not(feature = "desktop"))]
 use std::fs;
 #[cfg(not(feature = "desktop"))]
 use std::path::PathBuf;
 use std::sync::Arc;
-#[cfg(not(feature = "desktop"))]
+#[cfg(any(test, not(feature = "desktop")))]
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 #[cfg(all(feature = "desktop", target_os = "windows"))]
@@ -313,11 +313,11 @@ impl PersistentBlizzardCredentialSecretStore {
         let cipher = Aes256Gcm::new_from_slice(key).map_err(|error| error.to_string())?;
         let nonce_uuid = uuid::Uuid::new_v4();
         let nonce_bytes = &nonce_uuid.as_bytes()[..12];
-        let nonce = Nonce::from_slice(nonce_bytes);
+        let nonce = Nonce::try_from(nonce_bytes).map_err(|_| "Invalid nonce length".to_string())?;
         let mut payload = nonce_bytes.to_vec();
         payload.extend(
             cipher
-                .encrypt(nonce, secret.as_bytes())
+                .encrypt(&nonce, secret.as_bytes())
                 .map_err(|_| "Failed to encrypt Blizzard client secret".to_string())?,
         );
         Ok(Self::encode_hex(&payload))
@@ -329,8 +329,10 @@ impl PersistentBlizzardCredentialSecretStore {
             return Err("Invalid encrypted secret payload".to_string());
         }
         let cipher = Aes256Gcm::new_from_slice(key).map_err(|error| error.to_string())?;
+        let nonce =
+            Nonce::try_from(&payload[..12]).map_err(|_| "Invalid nonce length".to_string())?;
         let plaintext = cipher
-            .decrypt(Nonce::from_slice(&payload[..12]), &payload[12..])
+            .decrypt(&nonce, &payload[12..])
             .map_err(|_| "Failed to decrypt Blizzard client secret".to_string())?;
         String::from_utf8(plaintext).map_err(|error| error.to_string())
     }
@@ -495,10 +497,11 @@ impl BlizzardAuthState {
             .map_err(|error| error.to_string())?;
         let nonce_uuid = uuid::Uuid::new_v4();
         let nonce_bytes = &nonce_uuid.as_bytes()[..12];
+        let nonce = Nonce::try_from(nonce_bytes).map_err(|_| "Invalid nonce length".to_string())?;
         let mut payload = nonce_bytes.to_vec();
         payload.extend(
             cipher
-                .encrypt(Nonce::from_slice(nonce_bytes), value.as_bytes())
+                .encrypt(&nonce, value.as_bytes())
                 .map_err(|_| "Failed to encrypt private value".to_string())?,
         );
         Ok(payload.iter().map(|byte| format!("{byte:02x}")).collect())
@@ -516,9 +519,8 @@ impl BlizzardAuthState {
             return None;
         }
         let cipher = Aes256Gcm::new_from_slice(&self.session_encryption_key).ok()?;
-        let plaintext = cipher
-            .decrypt(Nonce::from_slice(&payload[..12]), &payload[12..])
-            .ok()?;
+        let nonce = Nonce::try_from(&payload[..12]).ok()?;
+        let plaintext = cipher.decrypt(&nonce, &payload[12..]).ok()?;
         String::from_utf8(plaintext).ok()
     }
 

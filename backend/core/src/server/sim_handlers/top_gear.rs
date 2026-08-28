@@ -177,7 +177,7 @@ pub(in crate::server) async fn create_top_gear_sim(
     job.batch_id = req.options.batch_id.clone();
     store.insert(job);
 
-    let simc_binary = match resolve_simc_binary_for_request(simc_path.get_ref(), &req.options) {
+    let simc_binary = match resolve_simc_binary_for_request(simc_path.get_ref()) {
         Ok(path) => path,
         Err(detail) => return HttpResponse::BadRequest().json(json!({ "detail": detail })),
     };

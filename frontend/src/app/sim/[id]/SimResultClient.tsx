@@ -1011,25 +1011,22 @@ export default function SimResultClient() {
   }, [getCurrentSimId, getSimTypeFallbackUrl, job?.sim_type, router]);
 
   const handleRerunInput = useCallback(async () => {
-    const input = job?.simc_input;
-    if (!input || rerunning) return;
+    const sourceJobId = job?.id || activeScenarioId;
+    if (!sourceJobId || sourceJobId === '_' || !job?.simc_input || rerunning) return;
 
     setRerunError('');
     setRerunning(true);
     try {
-      const storedOptions = job.options && typeof job.options === 'object' ? job.options : {};
-      const response = await fetchJson<{ id?: string }>(`${API_URL}/api/sim`, {
-        method: 'POST',
-        body: JSON.stringify({
-          ...storedOptions,
-          simc_input: input,
-          sim_type: job.sim_type || storedOptions.sim_type || 'quick',
-          iterations: job.iterations ?? storedOptions.iterations ?? 10000,
-          fight_style: job.fight_style || storedOptions.fight_style || 'Patchwerk',
-        }),
-      });
+      const response = await fetchJson<{ id?: string }>(
+        `${API_URL}/api/sim/${encodeURIComponent(sourceJobId)}/rerun`,
+        {
+          method: 'POST',
+        }
+      );
       if (!response?.id) throw new Error('The simulation could not be started.');
       trackSimulations([{ id: response.id, simType: job.sim_type }]);
+      setJob(null);
+      setActiveScenarioId(response.id);
       router.push(simResultHref(response.id));
     } catch (error: unknown) {
       setRerunError(
@@ -1038,7 +1035,7 @@ export default function SimResultClient() {
     } finally {
       setRerunning(false);
     }
-  }, [job, rerunning, router]);
+  }, [activeScenarioId, job, rerunning, router]);
 
   const handleCancelled = useCallback(() => {
     const currentSimId = getCurrentSimId();

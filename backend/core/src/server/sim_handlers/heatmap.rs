@@ -1556,7 +1556,7 @@ pub(super) async fn create_trinket_tier_heatmap_sim(
     job.combo_metadata_json = Some(meta_json);
     store.insert(job);
 
-    let simc_binary = match resolve_simc_binary_for_request(simc_path.get_ref(), options) {
+    let simc_binary = match resolve_simc_binary_for_request(simc_path.get_ref()) {
         Ok(path) => path,
         Err(detail) => return HttpResponse::BadRequest().json(json!({ "detail": detail })),
     };

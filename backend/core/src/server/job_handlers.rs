@@ -1,13 +1,130 @@
 use actix_web::{web, HttpRequest, HttpResponse};
 use serde::Deserialize;
 use serde_json::{json, Value};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use super::types::*;
 use crate::log_buffer::LogBuffer;
-use crate::models::JobStatus;
+use crate::models::{Job, JobStatus};
 use crate::simc_runner;
 use crate::storage::JobStorage;
+
+fn is_staged_sim_type(sim_type: &str) -> bool {
+    matches!(
+        sim_type,
+        "top_gear"
+            | "droptimizer"
+            | "external_buff_matrix"
+            | "consumable_matrix"
+            | "trinket_tier_heatmap"
+    )
+}
+
+fn stored_combo_count(job: &Job) -> Option<usize> {
+    let metadata_count = job
+        .combo_metadata_json
+        .as_deref()
+        .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+        .and_then(|metadata| metadata.get("_combo_count").and_then(Value::as_u64))
+        .and_then(|count| usize::try_from(count).ok())
+        .filter(|count| *count > 0);
+    if metadata_count.is_some() {
+        return metadata_count;
+    }
+
+    let input_count = job
+        .simc_input
+        .lines()
+        .filter(|line| line.trim_start().starts_with("### "))
+        .count();
+    (input_count > 0).then_some(input_count)
+}
+
+fn rerun_options(job: &Job) -> Value {
+    let mut options = job
+        .options
+        .clone()
+        .filter(|value| value.is_object())
+        .unwrap_or_else(|| json!({}));
+    if let Some(object) = options.as_object_mut() {
+        object.insert("sim_type".to_string(), json!(job.sim_type));
+        object.insert("iterations".to_string(), json!(job.iterations));
+        object.insert("fight_style".to_string(), json!(job.fight_style));
+        object.insert("target_error".to_string(), json!(job.target_error));
+    }
+    options
+}
+
+pub(super) async fn rerun_sim(
+    req: HttpRequest,
+    auth: web::Data<Arc<crate::server::auth_handlers::BlizzardAuthState>>,
+    path: web::Path<String>,
+    store: web::Data<Arc<dyn JobStorage>>,
+    simc_path: web::Data<PathBuf>,
+    log_buffer: web::Data<Arc<LogBuffer>>,
+) -> HttpResponse {
+    let owner_id = owner_id(&req, &auth);
+    let source_id = path.into_inner();
+    let Some(source) = store.get_owned(&owner_id, &source_id) else {
+        return HttpResponse::NotFound().json(json!({ "detail": "Job not found" }));
+    };
+
+    let options = rerun_options(&source);
+    let simc = match super::helpers::resolve_simc_binary_for_request(simc_path.get_ref()) {
+        Ok(path) => path,
+        Err(detail) => return HttpResponse::BadRequest().json(json!({ "detail": detail })),
+    };
+
+    let staged_combo_count = if is_staged_sim_type(&source.sim_type) {
+        stored_combo_count(&source)
+    } else {
+        None
+    };
+
+    let mut rerun = Job::new(
+        source.simc_input.clone(),
+        source.sim_type.clone(),
+        source.iterations,
+        source.fight_style.clone(),
+        source.target_error,
+    );
+    rerun.owner_id = owner_id;
+    rerun.options = Some(options.clone());
+    rerun.combo_metadata_json = source.combo_metadata_json.clone();
+    let job_id = rerun.id.clone();
+    let created_at = rerun.created_at.clone();
+    store.insert(rerun);
+
+    if let Some(combo_count) = staged_combo_count {
+        super::helpers::spawn_staged_sim(
+            store.get_ref().clone(),
+            auth.get_ref().clone(),
+            simc,
+            options,
+            job_id.clone(),
+            source.simc_input,
+            combo_count,
+            log_buffer.get_ref().clone(),
+        );
+    } else {
+        super::helpers::spawn_direct_sim(
+            store.get_ref().clone(),
+            auth.get_ref().clone(),
+            simc,
+            options,
+            job_id.clone(),
+            source.simc_input,
+            log_buffer.get_ref().clone(),
+        );
+    }
+
+    HttpResponse::Ok().json(SimResponse {
+        id: job_id,
+        status: "pending".to_string(),
+        created_at,
+    })
+}
 
 fn owner_id(
     req: &HttpRequest,
@@ -676,6 +793,22 @@ mod tests {
     ) -> HttpResponse {
         super::get_sim_status(test_request(), test_auth(), path, store).await
     }
+    async fn rerun_sim(
+        path: web::Path<String>,
+        store: web::Data<Arc<dyn JobStorage>>,
+        simc_path: web::Data<PathBuf>,
+        log_buffer: web::Data<Arc<LogBuffer>>,
+    ) -> HttpResponse {
+        super::rerun_sim(
+            test_request(),
+            test_auth(),
+            path,
+            store,
+            simc_path,
+            log_buffer,
+        )
+        .await
+    }
     async fn pause_sim(
         path: web::Path<String>,
         store: web::Data<Arc<dyn JobStorage>>,
@@ -785,6 +918,53 @@ mod tests {
     async fn text_body(resp: HttpResponse) -> String {
         let body = to_bytes(resp.into_body()).await.expect("body bytes");
         String::from_utf8(body.to_vec()).expect("utf8 body")
+    }
+
+    #[test]
+    fn rerun_preserves_specialized_input_metadata_and_options() {
+        let mut source = make_job("source", JobStatus::Done, "2026-01-01T00:00:00Z");
+        source.sim_type = "top_gear".to_string();
+        source.simc_input = concat!(
+            "# Base Actor\n",
+            "mage=Alice\n",
+            "### Combo 1\n",
+            "profileset.\"Combo 1\"+=head=id=123\n"
+        )
+        .to_string();
+        source.options = Some(json!({
+            "iterations": 2500,
+            "fight_style": "HecticAddCleave",
+            "target_error": 0.04,
+            "threads": 6,
+            "include_timeline": true
+        }));
+        source.combo_metadata_json = Some(
+            json!({
+                "_combo_count": 7,
+                "_combo_metadata": {"Combo 1": [{"slot": "head", "item_id": 123}]}
+            })
+            .to_string(),
+        );
+
+        let options = rerun_options(&source);
+        assert_eq!(options["sim_type"], json!("top_gear"));
+        assert_eq!(options["iterations"], json!(source.iterations));
+        assert_eq!(options["fight_style"], json!(source.fight_style));
+        assert_eq!(options["threads"], json!(6));
+        assert_eq!(stored_combo_count(&source), Some(7));
+        assert!(is_staged_sim_type(&source.sim_type));
+    }
+
+    #[actix_web::test]
+    async fn rerun_returns_not_found_for_unknown_job() {
+        let response = rerun_sim(
+            web::Path::from("missing".to_string()),
+            test_store(),
+            web::Data::new(PathBuf::from("missing-simc")),
+            web::Data::new(Arc::new(LogBuffer::new())),
+        )
+        .await;
+        assert_eq!(response.status(), actix_web::http::StatusCode::NOT_FOUND);
     }
 
     #[actix_web::test]

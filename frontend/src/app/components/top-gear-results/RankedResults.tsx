@@ -6,7 +6,6 @@ import type { Instance } from '../../drop-finder/types';
 import RankingsHeader from './RankingsHeader';
 import ResultRow from './ResultRow';
 
-const INITIAL_VISIBLE = 8;
 const PAGE_SIZE = 10;
 
 export interface ResultListProps {
@@ -59,16 +58,20 @@ export function ResultList({
   showRanks = true,
   isBestResult,
 }: ResultListProps) {
-  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
+  const [page, setPage] = useState(0);
 
   useEffect(() => {
-    setVisibleCount(INITIAL_VISIBLE);
+    setPage(0);
   }, [results]);
 
-  const visible = results.slice(0, visibleCount);
-  const hasMore = visibleCount < results.length;
-  const nextCount = Math.min(PAGE_SIZE, results.length - visibleCount);
+  const pageCount = Math.max(1, Math.ceil(results.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount - 1);
+  const pageStart = currentPage * PAGE_SIZE;
+  const visible = results.slice(pageStart, pageStart + PAGE_SIZE);
+  const hasPagination = pageCount > 1;
   const formatCount = (count: number) => count.toLocaleString();
+  const firstVisible = results.length === 0 ? 0 : pageStart + 1;
+  const lastVisible = pageStart + visible.length;
 
   return (
     <div className="space-y-1">
@@ -80,12 +83,16 @@ export function ResultList({
             <ResultRow
               key={result.name}
               result={result}
-              rank={showRanks ? idx + 1 : undefined}
+              rank={showRanks ? pageStart + idx + 1 : undefined}
               maxDps={maxDps}
               baseDps={baseDps}
               equippedGear={equippedGear}
               baseAvgIlevel={baseAvgIlevel}
-              isBest={isBestResult ? isBestResult(result, idx) : idx === 0 && result.delta > 0}
+              isBest={
+                isBestResult
+                  ? isBestResult(result, pageStart + idx)
+                  : pageStart + idx === 0 && result.delta > 0
+              }
               isSelected={result.name === (selectedResultName || results[0]?.name)}
               onSelect={() => onSelectResult(result.name)}
               itemInfoMap={itemInfoMap}
@@ -117,39 +124,36 @@ export function ResultList({
           );
         })()
       )}
-      {hasMore && (
+      {hasPagination && (
         <div className="border-border bg-surface-2 mt-2 rounded-lg border p-2.5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="px-1 text-xs text-zinc-400">
-              Showing {formatCount(visible.length)} of {formatCount(results.length)} results
+              Showing {formatCount(firstVisible)}-{formatCount(lastVisible)} of{' '}
+              {formatCount(results.length)} results
             </span>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => setVisibleCount((count) => count + nextCount)}
+                onClick={() => setPage((current) => Math.max(0, current - 1))}
+                disabled={currentPage === 0}
                 className="border-border rounded border px-3 py-1.5 text-sm text-zinc-300 transition-colors hover:border-zinc-600 hover:text-zinc-100"
               >
-                Show next {formatCount(nextCount)}
+                Previous
               </button>
               <button
                 type="button"
-                onClick={() => setVisibleCount(results.length)}
-                className="border-gold/40 bg-gold/10 text-gold hover:bg-gold/20 rounded border px-3 py-1.5 text-sm transition-colors"
+                onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))}
+                disabled={currentPage === pageCount - 1}
+                className="border-border rounded border px-3 py-1.5 text-sm text-zinc-300 transition-colors hover:border-zinc-600 hover:text-zinc-100"
               >
-                Show all {formatCount(results.length)}
+                Next
               </button>
+              <span className="flex items-center px-1 text-xs text-zinc-500">
+                Page {formatCount(currentPage + 1)} of {formatCount(pageCount)}
+              </span>
             </div>
           </div>
         </div>
-      )}
-      {visibleCount > INITIAL_VISIBLE && results.length > INITIAL_VISIBLE && (
-        <button
-          type="button"
-          onClick={() => setVisibleCount(INITIAL_VISIBLE)}
-          className="border-border bg-surface-2 mt-2 w-full rounded-lg border py-2.5 text-sm text-zinc-300 transition-colors hover:border-zinc-600 hover:text-zinc-100"
-        >
-          Show fewer
-        </button>
       )}
     </div>
   );

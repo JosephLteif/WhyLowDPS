@@ -1,11 +1,19 @@
 {
-  "contentRevision": "Unreleased-b3824b38d1a6",
+  "contentRevision": "Unreleased-8c650330c4ac",
   "releases": [
     {
       "version": "Unreleased",
       "date": "",
       "title": "Upcoming changes",
       "entries": [
+        {
+          "category": "improvement",
+          "title": "Paginate large Top Gear result lists",
+          "summary": "Top Gear rankings now use fixed-size pages instead of mounting every combination in one list, keeping large result sets more responsive and reducing WebView memory use.",
+          "items": [
+            "Use Previous and Next to browse results; only the current page is rendered."
+          ]
+        },
         {
           "category": "improvement",
           "title": "Select only eligible Top Gear items",

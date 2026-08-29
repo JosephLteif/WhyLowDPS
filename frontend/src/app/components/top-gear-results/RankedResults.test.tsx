@@ -41,28 +41,31 @@ function renderResults(results: TopGearResult[]) {
 }
 
 describe('ranked result disclosure', () => {
-  it('reveals results in batches and keeps show-all explicit', () => {
+  it('paginates results without rendering the full result set', () => {
     renderResults(buildResults(28));
 
+    expect(screen.getAllByTestId('result-row')).toHaveLength(10);
+    expect(screen.getByText('Showing 1-10 of 28 results')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Next' })).toBeInTheDocument();
+    expect(screen.getByText('Page 1 of 3')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Show all/ })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getAllByTestId('result-row')).toHaveLength(10);
+    expect(screen.getByText('Showing 11-20 of 28 results')).toBeInTheDocument();
+    expect(screen.getByText('Page 2 of 3')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     expect(screen.getAllByTestId('result-row')).toHaveLength(8);
-    expect(screen.getByText('Showing 8 of 28 results')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Show next 10' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Show all 28' })).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Show next 10' }));
-    expect(screen.getAllByTestId('result-row')).toHaveLength(18);
-    expect(screen.getByText('Showing 18 of 28 results')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Show fewer' })).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Show all 28' }));
-    expect(screen.getAllByTestId('result-row')).toHaveLength(28);
-    expect(screen.getByRole('button', { name: 'Show fewer' })).toBeInTheDocument();
+    expect(screen.getByText('Showing 21-28 of 28 results')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
   });
 
-  it('resets the visible window when the filtered result set changes', () => {
+  it('resets to the first page when the filtered result set changes', () => {
     const { rerender } = renderResults(buildResults(20));
-    fireEvent.click(screen.getByRole('button', { name: 'Show next 10' }));
-    expect(screen.getAllByTestId('result-row')).toHaveLength(18);
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getByText('Showing 11-20 of 20 results')).toBeInTheDocument();
 
     const nextResults = buildResults(12);
     rerender(
@@ -79,6 +82,7 @@ describe('ranked result disclosure', () => {
       />
     );
 
-    expect(screen.getAllByTestId('result-row')).toHaveLength(8);
+    expect(screen.getAllByTestId('result-row')).toHaveLength(10);
+    expect(screen.getByText('Showing 1-10 of 12 results')).toBeInTheDocument();
   });
 });

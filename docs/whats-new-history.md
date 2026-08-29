@@ -8,6 +8,12 @@ Add new work under the `Unreleased` section. The release workflow promotes that 
 
 ### Improvements
 
+#### Paginate large Top Gear result lists
+
+Top Gear rankings now use fixed-size pages instead of mounting every combination in one list, keeping large result sets more responsive and reducing WebView memory use.
+
+- Use Previous and Next to browse results; only the current page is rendered.
+
 #### Select only eligible Top Gear items
 
 Top Gear now offers an Eligible quick selection that keeps equipped items and selects only alternatives valid for the active character, specialization, and item-level rules.

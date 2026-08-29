@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { API_URL } from '../../lib/api';
 import { buildResolvedItemIdentity } from '../../lib/gear-utils';
 import type { ResolvedItem, ResolveGearResponse } from '../../lib/types';
+import { getUpgradeDiscountIlevel } from './topGearItemUtils';
 
 interface UpgradeOption {
   bonus_id: number;
@@ -85,49 +86,12 @@ export function useTopGearState({
     };
   }, []);
 
-  const getUpgradeDiscountIlevel = useCallback(
-    (item: ResolvedItem): number => {
-      const slotNames =
-        item.slot === 'finger1' || item.slot === 'finger2'
-          ? ['finger1', 'finger2']
-          : item.slot === 'trinket1' || item.slot === 'trinket2'
-            ? ['trinket1', 'trinket2']
-            : item.slot === 'main_hand' || item.slot === 'off_hand'
-              ? ['main_hand', 'off_hand']
-              : [item.slot];
-      const equipped = slotNames
-        .map((slot) => resolved.slots[slot]?.equipped)
-        .filter((equippedItem): equippedItem is ResolvedItem => Boolean(equippedItem));
-      const levels = equipped.map((equippedItem) => equippedItem.ilevel).filter((ilevel) => ilevel > 0);
-
-      if (
-        item.slot === 'finger1' ||
-        item.slot === 'finger2' ||
-        item.slot === 'trinket1' ||
-        item.slot === 'trinket2'
-      ) {
-        return levels.sort((a, b) => b - a)[1] ?? 0;
-      }
-
-      if (item.slot === 'main_hand' || item.slot === 'off_hand') {
-        const oneHanded = equipped
-          .filter((equippedItem) => equippedItem.inventory_type === 13)
-          .map((equippedItem) => equippedItem.ilevel)
-          .sort((a, b) => b - a);
-        if (oneHanded[1] !== undefined) return oneHanded[1];
-      }
-
-      return Math.max(...levels, 0);
-    },
-    [resolved.slots]
-  );
-
   const loadUpgradeOptions = useCallback(
     async (item: ResolvedItem) => {
       setLoadingUpgrades(true);
       try {
         const params = new URLSearchParams({ bonus_ids: item.bonus_ids.join(',') });
-        const discountIlevel = getUpgradeDiscountIlevel(item);
+        const discountIlevel = getUpgradeDiscountIlevel(item, resolved);
         if (discountIlevel > 0) params.set('discount_ilevel', String(discountIlevel));
         const res = await fetch(
           `${API_URL}/api/upgrade-options?${params.toString()}`,
@@ -156,7 +120,7 @@ export function useTopGearState({
       }
       setLoadingUpgrades(false);
     },
-    [getUpgradeDiscountIlevel, normalizeUpgradeOption]
+    [normalizeUpgradeOption, resolved]
   );
 
   const openAddItem = useCallback((slot?: string) => {

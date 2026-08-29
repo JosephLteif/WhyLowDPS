@@ -48,8 +48,8 @@ struct PreparedUpgradeCompare {
 }
 
 /// Return the item level used for the same-slot upgrade discount.
-/// Rings and trinkets use the lower of their two equipped item levels. The
-/// same applies to two equipped one-handed weapons; a two-handed weapon uses
+/// Rings and trinkets use the lower of their two available item levels. The
+/// same applies to two available one-handed weapons; a two-handed weapon uses
 /// its own slot level instead.
 fn upgrade_discount_ilevel(item: &ResolvedItem, resolved: &ResolveGearResponse) -> u64 {
     let slot_names: Vec<&str> = match item.slot.as_str() {
@@ -58,28 +58,34 @@ fn upgrade_discount_ilevel(item: &ResolvedItem, resolved: &ResolveGearResponse) 
         "main_hand" | "off_hand" => vec!["main_hand", "off_hand"],
         _ => vec![item.slot.as_str()],
     };
-    let equipped: Vec<&ResolvedItem> = slot_names
-        .iter()
-        .filter_map(|slot| {
-            resolved
-                .slots
-                .get(*slot)
-                .and_then(|slot_res| slot_res.equipped.as_ref())
-        })
-        .filter(|equipped_item| equipped_item.ilevel > 0)
-        .collect();
+    let available: Vec<&ResolvedItem> =
+        slot_names
+            .iter()
+            .flat_map(|slot| {
+                resolved.slots.get(*slot).into_iter().flat_map(|slot_res| {
+                    slot_res.equipped.iter().chain(slot_res.alternatives.iter())
+                })
+            })
+            .filter(|available_item| available_item.ilevel > 0)
+            .collect();
 
-    if matches!(item.slot.as_str(), "finger1" | "finger2" | "trinket1" | "trinket2") {
-        let mut levels: Vec<i64> = equipped.iter().map(|equipped_item| equipped_item.ilevel).collect();
+    if matches!(
+        item.slot.as_str(),
+        "finger1" | "finger2" | "trinket1" | "trinket2"
+    ) {
+        let mut levels: Vec<i64> = available
+            .iter()
+            .map(|available_item| available_item.ilevel)
+            .collect();
         levels.sort_unstable_by(|a, b| b.cmp(a));
         return levels.get(1).copied().unwrap_or(0) as u64;
     }
 
     if matches!(item.slot.as_str(), "main_hand" | "off_hand") {
-        let mut one_handed: Vec<i64> = equipped
+        let mut one_handed: Vec<i64> = available
             .iter()
-            .filter(|equipped_item| equipped_item.inventory_type == 13)
-            .map(|equipped_item| equipped_item.ilevel)
+            .filter(|available_item| available_item.inventory_type == 13)
+            .map(|available_item| available_item.ilevel)
             .collect();
         one_handed.sort_unstable_by(|a, b| b.cmp(a));
         if let Some(level) = one_handed.get(1) {
@@ -87,9 +93,9 @@ fn upgrade_discount_ilevel(item: &ResolvedItem, resolved: &ResolveGearResponse) 
         }
     }
 
-    equipped
+    available
         .iter()
-        .map(|equipped_item| equipped_item.ilevel)
+        .map(|available_item| available_item.ilevel)
         .max()
         .unwrap_or(0) as u64
 }
@@ -1169,5 +1175,70 @@ mod tests {
             discounted_upgrade_costs(&options, &options[2], discount_ilevel).get(&3008),
             Some(&15)
         );
+    }
+
+    #[test]
+    fn higher_same_slot_alternative_makes_lower_upgrade_free() {
+        let resolved = ResolveGearResponse {
+            character: crate::types::CharacterResolveInfo {
+                class_name: None,
+                spec: None,
+                can_dual_wield: false,
+                can_use_offhand: false,
+            },
+            base_profile: String::new(),
+            slots: HashMap::from([(
+                "legs".to_string(),
+                crate::types::SlotResolution {
+                    equipped: None,
+                    alternatives: vec![
+                        crate::types::ResolvedItem {
+                            slot: "legs".to_string(),
+                            ilevel: 282,
+                            ..Default::default()
+                        },
+                        crate::types::ResolvedItem {
+                            slot: "legs".to_string(),
+                            ilevel: 295,
+                            ..Default::default()
+                        },
+                    ],
+                },
+            )]),
+            excluded: Vec::new(),
+            talent_loadouts: Vec::new(),
+            catalyst_charges: None,
+        };
+        let item = crate::types::ResolvedItem {
+            slot: "legs".to_string(),
+            origin: crate::types::ItemOrigin::Bags,
+            ilevel: 282,
+            ..Default::default()
+        };
+
+        let options = vec![
+            game_data::UpgradeOption {
+                level: 2,
+                max_level: 6,
+                ilevel: 282,
+                bonus_id: 101,
+                quality: 4,
+                name: "Veteran 2/6".to_string(),
+                cumulative_costs: HashMap::new(),
+            },
+            game_data::UpgradeOption {
+                level: 3,
+                max_level: 6,
+                ilevel: 285,
+                bonus_id: 102,
+                quality: 4,
+                name: "Veteran 3/6".to_string(),
+                cumulative_costs: HashMap::from([(3008, 20)]),
+            },
+        ];
+
+        let discount_ilevel = upgrade_discount_ilevel(&item, &resolved);
+        assert_eq!(discount_ilevel, 295);
+        assert!(discounted_upgrade_costs(&options, &options[1], discount_ilevel).is_empty());
     }
 }

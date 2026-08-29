@@ -711,6 +711,7 @@ export default function TopGearPage() {
             items_by_slot: buildItemsBySlotJson(),
             max_upgrade: maxUpgrade,
             copy_enchants: globalAffixesEnabled ? false : copyEnchants,
+            ...(maxCombinations != null ? { max_combinations: maxCombinations } : {}),
             ...(talentBuilds.length > 1
               ? {
                   talent_builds: talentBuilds.map((tb) => ({

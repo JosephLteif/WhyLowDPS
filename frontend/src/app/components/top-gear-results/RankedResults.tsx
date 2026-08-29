@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ResultItem, TopGearResult } from '../../lib/types';
 import type { EnchantInfo, GemInfo, ItemInfo } from '../../lib/useItemInfo';
 import type { Instance } from '../../drop-finder/types';
@@ -7,8 +7,9 @@ import RankingsHeader from './RankingsHeader';
 import ResultRow from './ResultRow';
 
 const INITIAL_VISIBLE = 8;
+const PAGE_SIZE = 10;
 
-interface RankedResultsProps {
+export interface ResultListProps {
   results: TopGearResult[];
   maxDps: number;
   baseDps: number;
@@ -30,9 +31,12 @@ interface RankedResultsProps {
   isResultWishlisted?: (result: TopGearResult) => boolean;
   sourceInstances?: Instance[];
   baselineTierBySlot?: Record<string, string>;
+  showHeader?: boolean;
+  showRanks?: boolean;
+  isBestResult?: (result: TopGearResult, index: number) => boolean;
 }
 
-export default function RankedResults({
+export function ResultList({
   results,
   maxDps,
   baseDps,
@@ -51,14 +55,24 @@ export default function RankedResults({
   isResultWishlisted,
   sourceInstances = [],
   baselineTierBySlot = {},
-}: RankedResultsProps) {
-  const [expanded, setExpanded] = useState(false);
-  const visible = expanded ? results : results.slice(0, INITIAL_VISIBLE);
-  const hasMore = results.length > INITIAL_VISIBLE;
+  showHeader = true,
+  showRanks = true,
+  isBestResult,
+}: ResultListProps) {
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
+
+  useEffect(() => {
+    setVisibleCount(INITIAL_VISIBLE);
+  }, [results]);
+
+  const visible = results.slice(0, visibleCount);
+  const hasMore = visibleCount < results.length;
+  const nextCount = Math.min(PAGE_SIZE, results.length - visibleCount);
+  const formatCount = (count: number) => count.toLocaleString();
 
   return (
     <div className="space-y-1">
-      <RankingsHeader />
+      {showHeader && <RankingsHeader />}
       {visible.map((result, idx) =>
         (() => {
           const exact = getExactStatsStatus?.(result) || { status: 'idle' as const };
@@ -66,12 +80,12 @@ export default function RankedResults({
             <ResultRow
               key={result.name}
               result={result}
-              rank={idx + 1}
+              rank={showRanks ? idx + 1 : undefined}
               maxDps={maxDps}
               baseDps={baseDps}
               equippedGear={equippedGear}
               baseAvgIlevel={baseAvgIlevel}
-              isBest={idx === 0 && result.delta > 0}
+              isBest={isBestResult ? isBestResult(result, idx) : idx === 0 && result.delta > 0}
               isSelected={result.name === (selectedResultName || results[0]?.name)}
               onSelect={() => onSelectResult(result.name)}
               itemInfoMap={itemInfoMap}
@@ -104,15 +118,43 @@ export default function RankedResults({
         })()
       )}
       {hasMore && (
+        <div className="border-border bg-surface-2 mt-2 rounded-lg border p-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="px-1 text-xs text-zinc-400">
+              Showing {formatCount(visible.length)} of {formatCount(results.length)} results
+            </span>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setVisibleCount((count) => count + nextCount)}
+                className="border-border rounded border px-3 py-1.5 text-sm text-zinc-300 transition-colors hover:border-zinc-600 hover:text-zinc-100"
+              >
+                Show next {formatCount(nextCount)}
+              </button>
+              <button
+                type="button"
+                onClick={() => setVisibleCount(results.length)}
+                className="border-gold/40 bg-gold/10 text-gold hover:bg-gold/20 rounded border px-3 py-1.5 text-sm transition-colors"
+              >
+                Show all {formatCount(results.length)}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {visibleCount > INITIAL_VISIBLE && results.length > INITIAL_VISIBLE && (
         <button
-          onClick={() => setExpanded(!expanded)}
-          className="mt-2 w-full rounded-lg border border-border bg-surface-2 py-2.5 text-sm text-zinc-300 transition-all hover:border-zinc-600 hover:text-zinc-100"
+          type="button"
+          onClick={() => setVisibleCount(INITIAL_VISIBLE)}
+          className="border-border bg-surface-2 mt-2 w-full rounded-lg border py-2.5 text-sm text-zinc-300 transition-colors hover:border-zinc-600 hover:text-zinc-100"
         >
-          {expanded
-            ? 'Show less'
-            : `Show all ${results.length} results (+${results.length - INITIAL_VISIBLE} more)`}
+          Show fewer
         </button>
       )}
     </div>
   );
+}
+
+export default function RankedResults(props: ResultListProps) {
+  return <ResultList {...props} />;
 }

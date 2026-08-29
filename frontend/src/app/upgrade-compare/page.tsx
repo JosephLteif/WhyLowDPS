@@ -254,6 +254,7 @@ export default function UpgradeComparePage() {
                 ? 'ignore_budget'
                 : 'max_affordability',
             upgrade_budget_override: budgetOverridePayload,
+            ...(maxCombinations != null ? { max_combinations: maxCombinations } : {}),
           }),
           signal: controller.signal,
         });

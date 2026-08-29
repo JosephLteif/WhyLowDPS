@@ -293,6 +293,7 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
         configs.map(async (config) => {
           return fetchJson<any>(`${API_URL}${endpoint}`, {
             method: 'POST',
+            timeoutMs: 120_000,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               ...sharedPayload,

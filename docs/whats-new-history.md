@@ -49,6 +49,13 @@ Active simulations now remain easy to monitor after navigating to another page, 
 - The activity card appears on other pages and can be minimized to a small bottom-right indicator.
 - The duplicate activity card is hidden while viewing that simulation's own progress or result page.
 
+#### Keep long simulations and stage timing accurate
+
+Simulation stage timers now use the job's persisted runtime timing, so leaving and reopening a simulation no longer resets the current stage clock. Longer simulations also have more time to finish before the total timeout is reached.
+
+- Stage timing remains accurate through navigation, reloads, and pause/resume.
+- The SimC total timeout is now two hours while the no-output timeout remains 10 minutes.
+
 #### Rework the release pipeline
 
 The release pipeline now separates automated developer builds from stable release promotion for a cleaner, more reliable release cycle.

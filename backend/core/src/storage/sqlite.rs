@@ -38,7 +38,7 @@ impl SqliteStorage {
     }
 }
 
-const SQLITE_SCHEMA_VERSION: i64 = 2;
+const SQLITE_SCHEMA_VERSION: i64 = 3;
 
 fn initialize_schema(conn: &mut Connection) -> rusqlite::Result<()> {
     let tx = conn.transaction()?;
@@ -58,6 +58,9 @@ fn initialize_schema(conn: &mut Connection) -> rusqlite::Result<()> {
                 progress_stage TEXT,
                 progress_detail TEXT,
                 stages_completed TEXT NOT NULL DEFAULT '[]',
+                stage_timings TEXT NOT NULL DEFAULT '[]',
+                active_stage_elapsed REAL NOT NULL DEFAULT 0,
+                active_stage_started_at TEXT,
                 iterations INTEGER NOT NULL,
                 fight_style TEXT NOT NULL,
                 target_error REAL NOT NULL,
@@ -131,6 +134,9 @@ fn initialize_schema(conn: &mut Connection) -> rusqlite::Result<()> {
             ("jobs", "linked_realm", "TEXT"),
             ("jobs", "linked_name", "TEXT"),
             ("jobs", "pinned", "INTEGER NOT NULL DEFAULT 0"),
+            ("jobs", "stage_timings", "TEXT NOT NULL DEFAULT '[]'"),
+            ("jobs", "active_stage_elapsed", "REAL NOT NULL DEFAULT 0"),
+            ("jobs", "active_stage_started_at", "TEXT"),
             ("dungeon_routes", "level", "INTEGER"),
             ("dungeon_routes", "pull_count", "INTEGER"),
             ("dungeon_routes", "timer_seconds", "INTEGER"),
@@ -198,6 +204,10 @@ impl SqliteStorage {
         let status_str: String = row.get(1)?;
         let stages_str: String = row.get(11)?;
         let stages: Vec<String> = serde_json::from_str(&stages_str).unwrap_or_default();
+        let stage_timings_str: String = row.get(25).unwrap_or_else(|_| "[]".to_string());
+        let stage_timings = serde_json::from_str(&stage_timings_str).unwrap_or_default();
+        let active_stage_elapsed = row.get(26).unwrap_or(0.0);
+        let active_stage_started_at = row.get(27).ok().flatten();
         let options_json: Option<String> = row.get(4)?;
         let options = options_json.and_then(|s| serde_json::from_str(&s).ok());
 
@@ -215,6 +225,9 @@ impl SqliteStorage {
             progress_stage: row.get(9)?,
             progress_detail: row.get(10)?,
             stages_completed: stages,
+            stage_timings,
+            active_stage_elapsed,
+            active_stage_started_at,
             iterations: row.get::<_, u32>(12)?,
             fight_style: row.get(13)?,
             target_error: row.get(14)?,
@@ -243,8 +256,9 @@ impl JobStorage for SqliteStorage {
         conn.execute(
             "INSERT INTO jobs (id, status, sim_type, simc_input, options, result_json, combo_metadata_json,
              error_message, progress_pct, progress_stage, progress_detail, stages_completed,
-             iterations, fight_style, target_error, created_at, batch_id, raw_json, html_report, text_output, linked_region, linked_realm, linked_name, pinned, owner_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25)",
+             iterations, fight_style, target_error, created_at, batch_id, raw_json, html_report, text_output, linked_region, linked_realm, linked_name, pinned, owner_id,
+             stage_timings, active_stage_elapsed, active_stage_started_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28)",
             params![
                 job.id,
                 Self::status_to_str(&job.status),
@@ -271,6 +285,9 @@ impl JobStorage for SqliteStorage {
                 job.linked_name,
                 if job.pinned { 1 } else { 0 },
                 owner_id,
+                serde_json::to_string(&job.stage_timings).unwrap(),
+                job.active_stage_elapsed,
+                job.active_stage_started_at,
             ],
         )
         .expect("Failed to insert job");
@@ -288,7 +305,8 @@ impl JobStorage for SqliteStorage {
         conn.query_row(
             "SELECT id, status, sim_type, simc_input, options, result_json, combo_metadata_json,
              error_message, progress_pct, progress_stage, progress_detail, stages_completed,
-             iterations, fight_style, target_error, created_at, raw_json, html_report, text_output, batch_id, linked_region, linked_realm, linked_name, pinned, owner_id
+             iterations, fight_style, target_error, created_at, raw_json, html_report, text_output, batch_id, linked_region, linked_realm, linked_name, pinned, owner_id,
+             stage_timings, active_stage_elapsed, active_stage_started_at
              FROM jobs WHERE id = ?1",
             params![id],
             Self::row_to_job,
@@ -424,68 +442,124 @@ impl JobStorage for SqliteStorage {
     }
 
     fn update_status(&self, id: &str, status: JobStatus) {
+        let Some(mut job) = self.get(id) else {
+            return;
+        };
+        let from = job.status.clone();
+        job.transition_stage_timing(&from, &status);
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "UPDATE jobs SET status = ?1 WHERE id = ?2",
-            params![Self::status_to_str(&status), id],
+            "UPDATE jobs SET status = ?1, stage_timings = ?2, active_stage_elapsed = ?3, active_stage_started_at = ?4 WHERE id = ?5",
+            params![
+                Self::status_to_str(&status),
+                serde_json::to_string(&job.stage_timings).unwrap(),
+                job.active_stage_elapsed,
+                job.active_stage_started_at,
+                id
+            ],
         )
         .ok();
     }
 
     fn transition_status(&self, id: &str, from: JobStatus, to: JobStatus) -> bool {
+        let Some(mut job) = self.get(id) else {
+            return false;
+        };
+        if job.status != from {
+            return false;
+        }
+        job.transition_stage_timing(&from, &to);
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "UPDATE jobs SET status = ?1 WHERE id = ?2 AND status = ?3",
-            params![Self::status_to_str(&to), id, Self::status_to_str(&from)],
+            "UPDATE jobs SET status = ?1, stage_timings = ?2, active_stage_elapsed = ?3, active_stage_started_at = ?4 WHERE id = ?5 AND status = ?6",
+            params![
+                Self::status_to_str(&to),
+                serde_json::to_string(&job.stage_timings).unwrap(),
+                job.active_stage_elapsed,
+                job.active_stage_started_at,
+                id,
+                Self::status_to_str(&from)
+            ],
         )
         .map(|changed| changed == 1)
         .unwrap_or(false)
     }
 
     fn update_progress(&self, id: &str, pct: u8, stage: &str, detail: &str) {
+        let Some(mut job) = self.get(id) else {
+            return;
+        };
+        job.update_stage_timing(stage);
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "UPDATE jobs SET progress_pct = ?1, progress_stage = ?2, progress_detail = ?3 WHERE id = ?4",
-            params![pct, stage, detail, id],
+            "UPDATE jobs SET progress_pct = ?1, progress_stage = ?2, progress_detail = ?3, stage_timings = ?4, active_stage_elapsed = ?5, active_stage_started_at = ?6 WHERE id = ?7",
+            params![
+                pct,
+                job.progress_stage,
+                detail,
+                serde_json::to_string(&job.stage_timings).unwrap(),
+                job.active_stage_elapsed,
+                job.active_stage_started_at,
+                id
+            ],
         ).ok();
     }
 
     fn complete_stage(&self, id: &str, summary: &str) {
+        let Some(mut job) = self.get(id) else {
+            return;
+        };
+        job.complete_stage_timing();
+        job.stages_completed.push(summary.to_string());
         let conn = self.conn.lock().unwrap();
-        let current: Option<String> = conn
-            .query_row(
-                "SELECT stages_completed FROM jobs WHERE id = ?1",
-                params![id],
-                |row| row.get(0),
-            )
-            .ok();
-
-        if let Some(stages_str) = current {
-            let mut stages: Vec<String> = serde_json::from_str(&stages_str).unwrap_or_default();
-            stages.push(summary.to_string());
-            let updated = serde_json::to_string(&stages).unwrap();
-            conn.execute(
-                "UPDATE jobs SET stages_completed = ?1 WHERE id = ?2",
-                params![updated, id],
-            )
-            .ok();
-        }
+        conn.execute(
+            "UPDATE jobs SET stages_completed = ?1, stage_timings = ?2, active_stage_elapsed = ?3, active_stage_started_at = ?4 WHERE id = ?5",
+            params![
+                serde_json::to_string(&job.stages_completed).unwrap(),
+                serde_json::to_string(&job.stage_timings).unwrap(),
+                job.active_stage_elapsed,
+                job.active_stage_started_at,
+                id
+            ],
+        )
+        .ok();
     }
 
     fn set_result(&self, id: &str, result: String, raw_json: Option<String>) {
+        let Some(mut job) = self.get(id) else {
+            return;
+        };
+        job.complete_stage_timing();
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "UPDATE jobs SET result_json = ?1, raw_json = ?2, status = 'done' WHERE id = ?3",
-            params![result, raw_json, id],
+            "UPDATE jobs SET result_json = ?1, raw_json = ?2, status = 'done', stage_timings = ?3, active_stage_elapsed = ?4, active_stage_started_at = ?5 WHERE id = ?6",
+            params![
+                result,
+                raw_json,
+                serde_json::to_string(&job.stage_timings).unwrap(),
+                job.active_stage_elapsed,
+                job.active_stage_started_at,
+                id
+            ],
         )
         .ok();
     }
 
     fn set_error(&self, id: &str, error: String) {
+        let Some(mut job) = self.get(id) else {
+            return;
+        };
+        job.complete_stage_timing();
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "UPDATE jobs SET error_message = ?1, status = 'failed' WHERE id = ?2",
-            params![error, id],
+            "UPDATE jobs SET error_message = ?1, status = 'failed', stage_timings = ?2, active_stage_elapsed = ?3, active_stage_started_at = ?4 WHERE id = ?5",
+            params![
+                error,
+                serde_json::to_string(&job.stage_timings).unwrap(),
+                job.active_stage_elapsed,
+                job.active_stage_started_at,
+                id
+            ],
         )
         .ok();
     }
@@ -981,6 +1055,9 @@ mod tests {
             progress_stage: None,
             progress_detail: None,
             stages_completed: Vec::new(),
+            stage_timings: Vec::new(),
+            active_stage_elapsed: 0.0,
+            active_stage_started_at: None,
             iterations: 2000,
             fight_style: "Patchwerk".to_string(),
             target_error: 0.1,
@@ -1180,6 +1257,8 @@ mod tests {
         assert_eq!(job.progress_pct, 55);
         assert_eq!(job.progress_stage.as_deref(), Some("simulating"));
         assert_eq!(job.stages_completed, vec!["parsed profile".to_string()]);
+        assert_eq!(job.stage_timings.len(), 1);
+        assert_eq!(job.stage_timings[0].name, "simulating");
         assert_eq!(job.raw_json.as_deref(), Some(r#"{"raw":"ok"}"#));
         assert_eq!(job.html_report.as_deref(), Some("<html>report</html>"));
         assert_eq!(job.text_output.as_deref(), Some("text output"));

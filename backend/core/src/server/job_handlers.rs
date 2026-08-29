@@ -296,6 +296,7 @@ pub(super) async fn get_sim_status(
     }
 
     let control_available = simc_runner::control_status(&job_id).is_some();
+    let active_stage_elapsed = job.active_stage_elapsed_seconds();
 
     HttpResponse::Ok().json(json!({
         "id": job.id,
@@ -308,6 +309,8 @@ pub(super) async fn get_sim_status(
         "progress_stage": job.progress_stage,
         "progress_detail": job.progress_detail,
         "stages_completed": job.stages_completed,
+        "stage_timings": job.stage_timings,
+        "active_stage_elapsed": active_stage_elapsed,
         "result": parsed_result,
         "error": job.error_message,
         "iterations": job.iterations,

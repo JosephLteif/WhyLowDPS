@@ -497,7 +497,7 @@ fn set_process_affinity(pid: u32, threads: u32) {
 }
 
 const SIMC_IDLE_TIMEOUT_SECS: u64 = 600;
-const SIMC_TOTAL_TIMEOUT_SECS: u64 = 1800;
+const SIMC_TOTAL_TIMEOUT_SECS: u64 = 7200;
 
 fn timeout_for_next_output(now: Instant, total_deadline: Instant) -> Duration {
     Duration::from_secs(SIMC_IDLE_TIMEOUT_SECS).min(total_deadline.saturating_duration_since(now))

@@ -52,6 +52,8 @@ interface JobData {
   progress_stage?: string;
   progress_detail?: string;
   stages_completed?: string[];
+  stage_timings?: Array<{ name: string; elapsed: number }>;
+  active_stage_elapsed?: number;
   result: Record<string, unknown> | null;
   error: string | null;
   profilesets_completed?: number;
@@ -144,11 +146,6 @@ function useIcons(entries: { type: 'spell' | 'item'; id: number }[]) {
   }, [depKey, entries]);
 
   return icons;
-}
-
-interface StageTiming {
-  name: string;
-  elapsed: number;
 }
 
 function parseSeriesPoints(input: unknown): TimelinePoint[] {
@@ -424,14 +421,8 @@ export default function SimResultClient() {
   const [siblings, setSiblings] = useState<ScenarioSibling[] | null>(null);
   const [liveRelatedScenarios, setLiveRelatedScenarios] = useState<ScenarioSibling[]>([]);
   const [siblingStatuses, setSiblingStatuses] = useState<Record<string, string>>({});
-  const [stageTimings, setStageTimings] = useState<StageTiming[]>([]);
-  const [activeStageElapsed, setActiveStageElapsed] = useState(0);
   const [rerunError, setRerunError] = useState('');
   const [rerunning, setRerunning] = useState(false);
-  const activeStageNameRef = useRef<string | null>(null);
-  const activeStageStartedAtRef = useRef<number | null>(null);
-  const activeStageAccumulatedRef = useRef(0);
-  const stageTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const previousStatusRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -583,20 +574,6 @@ export default function SimResultClient() {
   const iconsMap = useIcons(activeBuffIconsParams);
   useWowheadTooltips([activeBuffs, job]);
 
-  const appendStageTiming = useCallback(
-    (name: string, elapsed: number) => {
-      setStageTimings((prev) => {
-        if (prev.some((entry) => entry.name === name)) return prev;
-        const next = [...prev, { name, elapsed: Math.max(0, elapsed) }];
-        if (typeof window !== 'undefined') {
-          sessionStorage.setItem(`sim_stage_timings_${activeScenarioId}`, JSON.stringify(next));
-        }
-        return next;
-      });
-    },
-    [activeScenarioId]
-  );
-
   useEffect(() => {
     setSiblings(getScenarioSiblings());
   }, []);
@@ -688,51 +665,6 @@ export default function SimResultClient() {
     }
     if (normalized.includes('upgrade')) return '/upgrade';
     return '/quick-sim';
-  }, []);
-
-  useEffect(() => {
-    activeStageNameRef.current = null;
-    activeStageStartedAtRef.current = null;
-    setActiveStageElapsed(0);
-    if (stageTickRef.current) {
-      clearInterval(stageTickRef.current);
-      stageTickRef.current = null;
-    }
-    if (typeof window === 'undefined' || !activeScenarioId || activeScenarioId === '_') {
-      setStageTimings([]);
-      return;
-    }
-    try {
-      const raw = sessionStorage.getItem(`sim_stage_timings_${activeScenarioId}`);
-      if (!raw) {
-        setStageTimings([]);
-        return;
-      }
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        setStageTimings(
-          parsed
-            .map((entry) => ({
-              name: String(entry?.name ?? ''),
-              elapsed: Number(entry?.elapsed ?? 0),
-            }))
-            .filter((entry) => entry.name)
-        );
-      } else {
-        setStageTimings([]);
-      }
-    } catch {
-      setStageTimings([]);
-    }
-  }, [activeScenarioId]);
-
-  useEffect(() => {
-    return () => {
-      if (stageTickRef.current) {
-        clearInterval(stageTickRef.current);
-        stageTickRef.current = null;
-      }
-    };
   }, []);
 
   useEffect(() => {
@@ -871,84 +803,6 @@ export default function SimResultClient() {
       clearTimeout(timer);
     };
   }, [activeScenarioId, job?.status]);
-
-  useEffect(() => {
-    if (!job) return;
-    const isActive = job.status === 'running' || job.status === 'pending';
-    const isPaused = job.status === 'paused';
-    const stage = job.progress_stage?.trim();
-    const now = Date.now();
-
-    if (!isActive && !isPaused) {
-      if (activeStageNameRef.current && activeStageStartedAtRef.current) {
-        const elapsed =
-          activeStageAccumulatedRef.current + (now - activeStageStartedAtRef.current) / 1000;
-        appendStageTiming(activeStageNameRef.current, elapsed);
-      }
-      activeStageNameRef.current = null;
-      activeStageStartedAtRef.current = null;
-      activeStageAccumulatedRef.current = 0;
-      setActiveStageElapsed(0);
-      if (stageTickRef.current) {
-        clearInterval(stageTickRef.current);
-        stageTickRef.current = null;
-      }
-      return;
-    }
-
-    if (isPaused) {
-      if (activeStageNameRef.current && activeStageStartedAtRef.current) {
-        activeStageAccumulatedRef.current += (now - activeStageStartedAtRef.current) / 1000;
-        activeStageStartedAtRef.current = null;
-        setActiveStageElapsed(activeStageAccumulatedRef.current);
-      }
-      if (stageTickRef.current) {
-        clearInterval(stageTickRef.current);
-        stageTickRef.current = null;
-      }
-      return;
-    }
-
-    if (!stage) return;
-
-    if (!activeStageNameRef.current) {
-      activeStageNameRef.current = stage;
-      activeStageStartedAtRef.current = now;
-      activeStageAccumulatedRef.current = 0;
-      setActiveStageElapsed(0);
-    } else if (activeStageNameRef.current !== stage) {
-      if (activeStageStartedAtRef.current) {
-        const elapsed =
-          activeStageAccumulatedRef.current + (now - activeStageStartedAtRef.current) / 1000;
-        appendStageTiming(activeStageNameRef.current, elapsed);
-      }
-      activeStageNameRef.current = stage;
-      activeStageStartedAtRef.current = now;
-      activeStageAccumulatedRef.current = 0;
-      setActiveStageElapsed(0);
-    } else if (!activeStageStartedAtRef.current) {
-      activeStageStartedAtRef.current = now;
-    }
-
-    setActiveStageElapsed(
-      activeStageAccumulatedRef.current +
-        (activeStageStartedAtRef.current ? (now - activeStageStartedAtRef.current) / 1000 : 0)
-    );
-    if (!stageTickRef.current) {
-      stageTickRef.current = setInterval(() => {
-        const startedAt = activeStageStartedAtRef.current;
-        if (!startedAt) return;
-        setActiveStageElapsed(activeStageAccumulatedRef.current + (Date.now() - startedAt) / 1000);
-      }, 1000);
-    }
-
-    return () => {
-      if (stageTickRef.current) {
-        clearInterval(stageTickRef.current);
-        stageTickRef.current = null;
-      }
-    };
-  }, [job, appendStageTiming]);
 
   useEffect(() => {
     if (!activeScenarioId || activeScenarioId === '_' || !job?.result) return;
@@ -1203,8 +1057,8 @@ export default function SimResultClient() {
           progressDetail={job.progress_detail}
           createdAt={job.created_at}
           stagesCompleted={job.stages_completed}
-          stageTimings={stageTimings}
-          activeStageElapsed={activeStageElapsed}
+          stageTimings={job.stage_timings}
+          activeStageElapsed={job.active_stage_elapsed}
           jobId={activeScenarioId}
           onCancelled={handleCancelled}
           onStatusChange={(status) =>
@@ -1332,7 +1186,7 @@ export default function SimResultClient() {
             iterations={r.iterations as number | undefined}
             targetError={r.target_error as number | undefined}
             elapsedTime={r.elapsed_time_seconds as number | undefined}
-            stageTimings={stageTimings}
+            stageTimings={job.stage_timings}
             talentString={r.talent_string as string | undefined}
             currencies={r.currencies as any}
             enableWishlistActions={isDropFinderResult}
@@ -1394,7 +1248,7 @@ export default function SimResultClient() {
             iterations={r.iterations as number | undefined}
             targetError={r.target_error as number | undefined}
             elapsedTime={r.elapsed_time_seconds as number | undefined}
-            stageTimings={stageTimings}
+            stageTimings={job.stage_timings}
             avgIlevel={avgIlevel}
           >
             {info?.kind === 'dungeon' && (

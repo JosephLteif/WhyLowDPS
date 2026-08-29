@@ -6,6 +6,11 @@ import type { EnchantInfo, GemInfo, ItemInfo } from '../../lib/useItemInfo';
 import { getIconUrl } from '../../lib/useItemInfo';
 import type { Instance } from '../../drop-finder/types';
 import { calculateAverageIlevel } from '../../lib/ilevel';
+import {
+  formatUpgradePreviewLabel,
+  labelsEqual,
+  parseUpgradeTierLevel,
+} from '../../lib/upgrade-preview';
 import ItemTag from './ItemTag';
 import {
   AUGMENT_RUNE_OPTIONS,
@@ -72,17 +77,6 @@ function shortTierFromItem(item?: {
   return null;
 }
 
-function parseTierLevelFromUpgrade(upgradeRaw?: string): { tier: string; level: number; max: number } | null {
-  const value = String(upgradeRaw || '').split(/\s*->\s*/).pop()?.trim() || '';
-  const match = value.match(/^([A-Za-z]+)\s+(\d+)\s*\/\s*(\d+)$/);
-  if (!match) return null;
-  return {
-    tier: match[1],
-    level: Number(match[2]),
-    max: Number(match[3]),
-  };
-}
-
 function extractTierLevelLabel(item?: {
   upgrade?: string;
   tag?: string;
@@ -102,81 +96,6 @@ function extractTierLevelLabel(item?: {
     }
   }
   return '';
-}
-
-function normalizeUpgradeLabel(value?: string | null): string {
-  return String(value || '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function labelsEqual(left?: string | null, right?: string | null): boolean {
-  return String(left || '').trim().toLowerCase() === String(right || '').trim().toLowerCase();
-}
-
-function reverseUpgradeTransition(label: string): string {
-  const segments = label
-    .split(/\s*->\s*/)
-    .map((segment) => segment.trim())
-    .filter(Boolean);
-  if (segments.length < 2) return label;
-  return `${segments[segments.length - 1]} -> ${segments[0]}`;
-}
-
-function collapseUpgradeLabelPath(upgradeLabel: string, equippedUpgradeLabel?: string | null): string {
-  const segments = upgradeLabel
-    .split('->')
-    .map((segment) => segment.trim())
-    .filter(Boolean);
-  const target = segments[segments.length - 1] || '';
-  const equipped = normalizeUpgradeLabel(equippedUpgradeLabel);
-  if (!target && !equipped) return '';
-  if (!equipped) {
-    if (segments.length > 1) {
-      const previous = segments[segments.length - 2] || '';
-      return labelsEqual(previous, target) ? target : `${previous} -> ${target}`;
-    }
-    return target;
-  }
-  if (!target) return equipped;
-  return labelsEqual(equipped, target) ? target : `${equipped} -> ${target}`;
-}
-
-function formatUpgradePreviewLabel(args: {
-  upgradeLabel: string;
-  equippedUpgradeLabel?: string | null;
-  equippedTierLevelLabel?: string | null;
-  itemTierLevelLabel?: string | null;
-  upgradeLevels?: number;
-}): string {
-  const {
-    upgradeLabel,
-    equippedUpgradeLabel,
-    equippedTierLevelLabel,
-    itemTierLevelLabel,
-    upgradeLevels,
-  } = args;
-  const collapsed = collapseUpgradeLabelPath(upgradeLabel, equippedUpgradeLabel);
-  const collapsedTarget = collapsed.split(/\s*->\s*/).pop()?.trim() || '';
-  const normalizedCollapsedTarget = normalizeUpgradeLabel(collapsedTarget);
-  const normalizedEquippedTier = normalizeUpgradeLabel(equippedTierLevelLabel);
-  const normalizedItemTier = normalizeUpgradeLabel(itemTierLevelLabel);
-  if (!collapsed.includes('->') && normalizedCollapsedTarget) {
-    if (normalizedEquippedTier && !labelsEqual(normalizedEquippedTier, normalizedCollapsedTarget)) {
-      return `${normalizedCollapsedTarget} -> ${normalizedEquippedTier}`;
-    }
-    if (normalizedItemTier && !labelsEqual(normalizedItemTier, normalizedCollapsedTarget)) {
-      return `${normalizedCollapsedTarget} -> ${normalizedItemTier}`;
-    }
-  }
-  if (collapsed.includes('->')) return reverseUpgradeTransition(collapsed);
-  const target = parseTierLevelFromUpgrade(collapsed);
-  if (!target) return collapsed;
-  const levels = Number(upgradeLevels || 0);
-  if (levels > 0 && target.level > levels) {
-    return `${target.tier} ${target.level}/${target.max} -> ${target.tier} ${target.level - levels}/${target.max}`;
-  }
-  return collapsed;
 }
 
 function trackTagClass(label?: string): string {
@@ -462,7 +381,7 @@ export default function ResultRow({
         itemTierLevelLabel: extractTierLevelLabel(it),
         upgradeLevels: Number(it.upgrade_levels || 0),
       });
-      const nextTierLevel = parseTierLevelFromUpgrade(tierText.split(/\s*->\s*/).pop() || '');
+      const nextTierLevel = parseUpgradeTierLevel(tierText.split(/\s*->\s*/).pop() || '');
 
       bySlot[it.slot] = {
         upgradeState,

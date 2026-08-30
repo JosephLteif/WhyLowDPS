@@ -12,6 +12,10 @@ import { trackSimulations } from './sim-tracking';
 import { buildFightStylePayload } from './fight-style';
 import { normalizeLiveCharacterStats } from './stat-snapshot';
 import {
+  DEFAULT_SIM_IDLE_TIMEOUT_SECONDS,
+  DEFAULT_SIM_TIMEOUT_SECONDS,
+} from './sim-timeout';
+import {
   buildCurrentReturnUrl,
   registerSimReturnTarget,
   registerSimReturnTargets,
@@ -111,6 +115,8 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
     simcInput,
     fightStyle,
     threads,
+    simTimeoutSeconds,
+    simIdleTimeoutSeconds,
     selectedTalent,
     targetCount,
     fightLength,
@@ -251,6 +257,8 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
         iterations: 10000,
         target_error: 0.1,
         threads: threadsOverride ?? threads,
+        sim_timeout_seconds: simTimeoutSeconds ?? DEFAULT_SIM_TIMEOUT_SECONDS,
+        sim_idle_timeout_seconds: simIdleTimeoutSeconds ?? DEFAULT_SIM_IDLE_TIMEOUT_SECONDS,
         simc_channel: simcChannel || 'bundled',
         ...(batchId ? { batch_id: batchId } : {}),
         ...(selectedTalent ? { talents: selectedTalent } : {}),
@@ -421,6 +429,8 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
     fetchBaselineLiveStats,
     simAgain,
     simcInput,
+    simTimeoutSeconds,
+    simIdleTimeoutSeconds,
   ]);
 
   const buttonLabel = useCallback(

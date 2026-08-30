@@ -1688,6 +1688,12 @@ pub async fn get_user_configs(
     let sim_threads = store
         .get_user_config(&claims.sub, "sim_threads")
         .unwrap_or_default();
+    let sim_timeout_seconds = store
+        .get_user_config(&claims.sub, "sim_timeout_seconds")
+        .unwrap_or_default();
+    let sim_idle_timeout_seconds = store
+        .get_user_config(&claims.sub, "sim_idle_timeout_seconds")
+        .unwrap_or_default();
     let max_gear_combinations = store
         .get_user_config(&claims.sub, "max_gear_combinations")
         .unwrap_or_default();
@@ -1708,6 +1714,8 @@ pub async fn get_user_configs(
         "blizzard_client_id": "",
         "has_blizzard_client_secret": false,
         "sim_threads": sim_threads,
+        "sim_timeout_seconds": sim_timeout_seconds,
+        "sim_idle_timeout_seconds": sim_idle_timeout_seconds,
         "max_gear_combinations": max_gear_combinations,
         "simc_download_channel": simc_download_channel,
         "simc_sim_channel": simc_sim_channel,
@@ -1728,6 +1736,8 @@ pub async fn set_user_config(
     };
 
     if body.key != "sim_threads"
+        && body.key != "sim_timeout_seconds"
+        && body.key != "sim_idle_timeout_seconds"
         && body.key != "max_gear_combinations"
         && body.key != "simc_download_channel"
         && body.key != "simc_sim_channel"
@@ -3000,6 +3010,27 @@ mod tests {
             store.get_user_config("Tester#9999", "sim_threads"),
             Some("8".to_string())
         );
+
+        for (key, value) in [
+            ("sim_timeout_seconds", "14400"),
+            ("sim_idle_timeout_seconds", "900"),
+        ] {
+            let response = set_user_config(
+                req.clone(),
+                state.clone(),
+                store.clone(),
+                web::Json(UserConfigUpdate {
+                    key: key.to_string(),
+                    value: value.to_string(),
+                }),
+            )
+            .await;
+            assert_eq!(response.status(), 200);
+            assert_eq!(
+                store.get_user_config("Tester#9999", key),
+                Some(value.to_string())
+            );
+        }
     }
 
     #[actix_web::test]
@@ -3018,6 +3049,8 @@ mod tests {
         store.set_user_config("Tester#9999", "blizzard_client_id", "client-id");
         store.set_user_config("Tester#9999", "blizzard_client_secret", "client-secret");
         store.set_user_config("Tester#9999", "sim_threads", "8");
+        store.set_user_config("Tester#9999", "sim_timeout_seconds", "14400");
+        store.set_user_config("Tester#9999", "sim_idle_timeout_seconds", "900");
         store.set_user_config("Other#1111", "sim_threads", "99");
 
         activate_test_user(&state, &store, "Tester#9999", "access");
@@ -3043,6 +3076,16 @@ mod tests {
         assert_eq!(
             payload.get("sim_threads").and_then(Value::as_str),
             Some("8")
+        );
+        assert_eq!(
+            payload.get("sim_timeout_seconds").and_then(Value::as_str),
+            Some("14400")
+        );
+        assert_eq!(
+            payload
+                .get("sim_idle_timeout_seconds")
+                .and_then(Value::as_str),
+            Some("900")
         );
     }
 

@@ -38,6 +38,16 @@ import { useDataFileStateManager } from './useDataFileStateManager';
 import { useSettingsUpdater } from './useSettingsUpdater';
 import { fetchReadiness, type ReadinessSnapshot } from '../lib/readiness';
 import { SIMULATION_PERFORMANCE_PRESETS, getPresetThreads } from '../lib/sim-performance';
+import {
+  clampSimIdleTimeoutSeconds,
+  clampSimTimeoutSeconds,
+  DEFAULT_SIM_IDLE_TIMEOUT_SECONDS,
+  DEFAULT_SIM_TIMEOUT_SECONDS,
+  MAX_SIM_IDLE_TIMEOUT_SECONDS,
+  MAX_SIM_TIMEOUT_SECONDS,
+  MIN_SIM_IDLE_TIMEOUT_SECONDS,
+  MIN_SIM_TIMEOUT_SECONDS,
+} from '../lib/sim-timeout';
 
 type CloseBehaviorPreferenceResponse = {
   minimize_to_tray_on_close?: boolean | null;
@@ -84,6 +94,10 @@ export default function SettingsPage() {
   const {
     threads,
     setThreads,
+    simTimeoutSeconds,
+    setSimTimeoutSeconds,
+    simIdleTimeoutSeconds,
+    setSimIdleTimeoutSeconds,
     maxCombinations,
     setMaxCombinations,
     autoClipboardPasteSimc,
@@ -248,6 +262,14 @@ export default function SettingsPage() {
         if (Number.isFinite(savedThreads) && savedThreads > 0) {
           setThreads(savedThreads);
         }
+        const savedSimTimeout = parseInt(data.sim_timeout_seconds || '', 10);
+        if (Number.isFinite(savedSimTimeout) && savedSimTimeout > 0) {
+          setSimTimeoutSeconds(clampSimTimeoutSeconds(savedSimTimeout));
+        }
+        const savedSimIdleTimeout = parseInt(data.sim_idle_timeout_seconds || '', 10);
+        if (Number.isFinite(savedSimIdleTimeout) && savedSimIdleTimeout > 0) {
+          setSimIdleTimeoutSeconds(clampSimIdleTimeoutSeconds(savedSimIdleTimeout));
+        }
         const savedMaxCombos = parseInt(data.max_gear_combinations || '', 10);
         if (Number.isFinite(savedMaxCombos) && savedMaxCombos > 0) {
           setMaxCombinations(savedMaxCombos);
@@ -261,7 +283,15 @@ export default function SettingsPage() {
       .finally(() => {
         setPageLoading(false);
       });
-  }, [authLoading, user, router, setMaxCombinations, setThreads]);
+  }, [
+    authLoading,
+    user,
+    router,
+    setMaxCombinations,
+    setSimIdleTimeoutSeconds,
+    setSimTimeoutSeconds,
+    setThreads,
+  ]);
 
   useEffect(() => {
     if (!authLoading && user) void refreshReadiness();
@@ -320,6 +350,30 @@ export default function SettingsPage() {
       }),
     }).catch(() => {});
   }, [maxCombinations, performanceSaved, user]);
+
+  useEffect(() => {
+    if (!performanceSaved || !user || simTimeoutSeconds <= 0) return;
+    fetchJson(`${API_URL}/api/user/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        key: 'sim_timeout_seconds',
+        value: String(simTimeoutSeconds),
+      }),
+    }).catch(() => {});
+  }, [performanceSaved, simTimeoutSeconds, user]);
+
+  useEffect(() => {
+    if (!performanceSaved || !user || simIdleTimeoutSeconds <= 0) return;
+    fetchJson(`${API_URL}/api/user/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        key: 'sim_idle_timeout_seconds',
+        value: String(simIdleTimeoutSeconds),
+      }),
+    }).catch(() => {});
+  }, [performanceSaved, simIdleTimeoutSeconds, user]);
 
   useEffect(() => {
     if (!isDesktop) return;
@@ -1129,6 +1183,58 @@ export default function SettingsPage() {
                 }}
                 className="w-24 rounded border border-border bg-surface-2 px-2 py-1 text-center font-mono text-xs tabular-nums text-white [appearance:textfield] focus:border-gold/50 focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               />
+            </div>
+
+            <div className="space-y-3 border-t border-border pt-4">
+              <div>
+                <h3 className="text-sm font-medium text-zinc-300">Simulation timeouts</h3>
+                <p className="mt-1 text-[12px] text-zinc-500">
+                  Total runtime defaults to 2 hours. The no-output timeout stops a run that stops
+                  producing progress.
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="space-y-1.5">
+                  <span className="text-[12px] font-medium text-zinc-400">Total timeout</span>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={MIN_SIM_TIMEOUT_SECONDS / 3600}
+                      max={MAX_SIM_TIMEOUT_SECONDS / 3600}
+                      step={0.25}
+                      value={simTimeoutSeconds / 3600}
+                      onChange={(e) => {
+                        const hours = Number(e.target.value);
+                        if (Number.isFinite(hours)) {
+                          setSimTimeoutSeconds(hours * 3600);
+                        }
+                      }}
+                      className="w-24 rounded border border-border bg-surface-2 px-2 py-1 text-center font-mono text-xs tabular-nums text-white [appearance:textfield] focus:border-gold/50 focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    />
+                    <span className="text-xs text-zinc-500">hours</span>
+                  </div>
+                </label>
+                <label className="space-y-1.5">
+                  <span className="text-[12px] font-medium text-zinc-400">No-output timeout</span>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={MIN_SIM_IDLE_TIMEOUT_SECONDS / 60}
+                      max={MAX_SIM_IDLE_TIMEOUT_SECONDS / 60}
+                      step={1}
+                      value={Math.round(simIdleTimeoutSeconds / 60)}
+                      onChange={(e) => {
+                        const minutes = Number(e.target.value);
+                        if (Number.isFinite(minutes)) {
+                          setSimIdleTimeoutSeconds(minutes * 60);
+                        }
+                      }}
+                      className="w-24 rounded border border-border bg-surface-2 px-2 py-1 text-center font-mono text-xs tabular-nums text-white [appearance:textfield] focus:border-gold/50 focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    />
+                    <span className="text-xs text-zinc-500">minutes</span>
+                  </div>
+                </label>
+              </div>
             </div>
           </div>
         </section>

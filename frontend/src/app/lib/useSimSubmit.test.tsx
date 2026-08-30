@@ -17,6 +17,8 @@ vi.mock('../components/SimContext', () => ({
     simcInput: 'mage="Alice"\nserver=Illidan\nregion=us\n',
     fightStyle: 'Patchwerk',
     threads: 1,
+    simTimeoutSeconds: 7200,
+    simIdleTimeoutSeconds: 600,
     selectedTalent: '',
     targetCount: 1,
     fightLength: 300,
@@ -114,5 +116,7 @@ describe('useSimSubmit light mode', () => {
 
     await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/sim/sim-override'));
     expect(submittedBody?.threads).toBe(4);
+    expect(submittedBody?.sim_timeout_seconds).toBe(7200);
+    expect(submittedBody?.sim_idle_timeout_seconds).toBe(600);
   });
 });

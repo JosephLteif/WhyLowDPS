@@ -1,5 +1,5 @@
 {
-  "contentRevision": "Unreleased-5259bf33daa1",
+  "contentRevision": "Unreleased-dc53791b551a",
   "releases": [
     {
       "version": "Unreleased",
@@ -12,6 +12,14 @@
           "summary": "Simulation launch controls now include a performance menu for one-time CPU thread overrides, while the main launch button continues to use the saved default.",
           "items": [
             "Choose Balanced, Performance, or Maximum for an individual simulation without changing Settings."
+          ]
+        },
+        {
+          "category": "improvement",
+          "title": "Configure simulation timeouts",
+          "summary": "Simulation settings now let you control how long a simulation may run and how long it may go without producing output, with a two-hour total timeout by default.",
+          "items": [
+            "Adjust the total and no-output timeouts from Settings > Simulation; values are saved with your account."
           ]
         },
         {

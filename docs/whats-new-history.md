@@ -14,6 +14,12 @@ Simulation launch controls now include a performance menu for one-time CPU threa
 
 - Choose Balanced, Performance, or Maximum for an individual simulation without changing Settings.
 
+#### Configure simulation timeouts
+
+Simulation settings now let you control how long a simulation may run and how long it may go without producing output, with a two-hour total timeout by default.
+
+- Adjust the total and no-output timeouts from Settings > Simulation; values are saved with your account.
+
 #### Paginate large Top Gear result lists
 
 Top Gear rankings now use fixed-size pages instead of mounting every combination in one list, keeping large result sets more responsive and reducing WebView memory use.

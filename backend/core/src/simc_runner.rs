@@ -496,11 +496,74 @@ fn set_process_affinity(pid: u32, threads: u32) {
     }
 }
 
-const SIMC_IDLE_TIMEOUT_SECS: u64 = 600;
-const SIMC_TOTAL_TIMEOUT_SECS: u64 = 7200;
+pub const DEFAULT_SIMC_IDLE_TIMEOUT_SECS: u64 = 600;
+pub const DEFAULT_SIMC_TOTAL_TIMEOUT_SECS: u64 = 7200;
+pub const MIN_SIMC_IDLE_TIMEOUT_SECS: u64 = 60;
+pub const MAX_SIMC_IDLE_TIMEOUT_SECS: u64 = 3600;
+pub const MIN_SIMC_TOTAL_TIMEOUT_SECS: u64 = 15 * 60;
+pub const MAX_SIMC_TOTAL_TIMEOUT_SECS: u64 = 24 * 60 * 60;
+
+const SIMC_IDLE_TIMEOUT_SECS: u64 = DEFAULT_SIMC_IDLE_TIMEOUT_SECS;
+const SIMC_TOTAL_TIMEOUT_SECS: u64 = DEFAULT_SIMC_TOTAL_TIMEOUT_SECS;
+
+#[derive(Clone, Copy)]
+struct SimTimeouts {
+    idle: Duration,
+    total: Duration,
+}
+
+impl Default for SimTimeouts {
+    fn default() -> Self {
+        Self {
+            idle: Duration::from_secs(DEFAULT_SIMC_IDLE_TIMEOUT_SECS),
+            total: Duration::from_secs(DEFAULT_SIMC_TOTAL_TIMEOUT_SECS),
+        }
+    }
+}
+
+fn resolve_timeout_seconds(
+    options: &Value,
+    key: &str,
+    default: u64,
+    minimum: u64,
+    maximum: u64,
+) -> u64 {
+    options
+        .get(key)
+        .and_then(|value| value.as_u64())
+        .unwrap_or(default)
+        .clamp(minimum, maximum)
+}
+
+fn resolve_sim_timeouts(options: &Value) -> SimTimeouts {
+    SimTimeouts {
+        idle: Duration::from_secs(resolve_timeout_seconds(
+            options,
+            "sim_idle_timeout_seconds",
+            DEFAULT_SIMC_IDLE_TIMEOUT_SECS,
+            MIN_SIMC_IDLE_TIMEOUT_SECS,
+            MAX_SIMC_IDLE_TIMEOUT_SECS,
+        )),
+        total: Duration::from_secs(resolve_timeout_seconds(
+            options,
+            "sim_timeout_seconds",
+            DEFAULT_SIMC_TOTAL_TIMEOUT_SECS,
+            MIN_SIMC_TOTAL_TIMEOUT_SECS,
+            MAX_SIMC_TOTAL_TIMEOUT_SECS,
+        )),
+    }
+}
 
 fn timeout_for_next_output(now: Instant, total_deadline: Instant) -> Duration {
     Duration::from_secs(SIMC_IDLE_TIMEOUT_SECS).min(total_deadline.saturating_duration_since(now))
+}
+
+fn timeout_for_next_output_with_idle(
+    now: Instant,
+    total_deadline: Instant,
+    idle_timeout: Duration,
+) -> Duration {
+    idle_timeout.min(total_deadline.saturating_duration_since(now))
 }
 
 async fn acquire_simc_slot() -> Result<tokio::sync::OwnedSemaphorePermit> {
@@ -725,6 +788,7 @@ async fn run_simc_subprocess(
     apply_default_overrides: bool,
     stage_name: &str,
     generate_html: bool,
+    timeouts: SimTimeouts,
     on_p: impl Fn(usize, usize),
     on_l: impl Fn(&str),
 ) -> Result<SimcOutput> {
@@ -866,10 +930,9 @@ async fn run_simc_subprocess(
 
         let paused_since_start = control.paused_duration().saturating_sub(pause_baseline);
         let active_elapsed = active_started.elapsed().saturating_sub(paused_since_start);
-        let total_remaining =
-            Duration::from_secs(SIMC_TOTAL_TIMEOUT_SECS).saturating_sub(active_elapsed);
+        let total_remaining = timeouts.total.saturating_sub(active_elapsed);
         let now = Instant::now();
-        let timeout = timeout_for_next_output(now, now + total_remaining);
+        let timeout = timeout_for_next_output_with_idle(now, now + total_remaining, timeouts.idle);
         let notified = control.notify.notified();
         tokio::pin!(notified);
         notified.as_mut().enable();
@@ -913,14 +976,16 @@ async fn run_simc_subprocess(
                 let _ = child.kill().await;
                 RUNNING_PROCESSES.lock().unwrap().remove(job_id);
                 control.detach_process();
-                let timeout_kind = if total_remaining <= Duration::from_secs(SIMC_IDLE_TIMEOUT_SECS) {
+                let timeout_kind = if total_remaining <= timeouts.idle {
                     "total"
                 } else {
                     "idle-output"
                 };
                 return Err(AppError::SimcError(format!(
                     "simc {} timeout (idle={}s total={}s)",
-                    timeout_kind, SIMC_IDLE_TIMEOUT_SECS, SIMC_TOTAL_TIMEOUT_SECS
+                    timeout_kind,
+                    timeouts.idle.as_secs(),
+                    timeouts.total.as_secs()
                 )));
             }
         }
@@ -1089,6 +1154,7 @@ pub async fn run_simc(
         .unwrap_or(false);
     let apply_default_overrides = should_apply_default_overrides(sim_type, raid_buff_customized);
     let t = resolve_threads(options);
+    let timeouts = resolve_sim_timeouts(options);
     let d = options
         .get("desired_targets")
         .and_then(|v| v.as_u64())
@@ -1146,6 +1212,7 @@ pub async fn run_simc(
         apply_default_overrides,
         "",
         true,
+        timeouts,
         on_p,
         on_l,
     )
@@ -1176,6 +1243,7 @@ pub async fn run_simc_staged(
         .and_then(|v| v.as_u64())
         .unwrap_or(1000) as u32;
     let threads = resolve_threads(options);
+    let timeouts = resolve_sim_timeouts(options);
     let desired = options
         .get("desired_targets")
         .and_then(|v| v.as_u64())
@@ -1220,6 +1288,7 @@ pub async fn run_simc_staged(
             apply_default_overrides,
             "direct",
             false,
+            timeouts,
             |c, t| {
                 on_p(
                     5 + ((c as f64 / t as f64) * 90.0) as u8,
@@ -1268,6 +1337,7 @@ pub async fn run_simc_staged(
             apply_default_overrides,
             &stage.name.to_lowercase(),
             false,
+            timeouts,
             |c, t| {
                 on_p(
                     start + ((c as f64 / t as f64) * (end - start) as f64) as u8,
@@ -1369,6 +1439,7 @@ mod tests {
                 true,
                 "",
                 false,
+                SimTimeouts::default(),
                 |_, _| {},
                 |_| {},
             )
@@ -1799,6 +1870,32 @@ fight_style=Patchwerk
     }
 
     #[test]
+    fn simulation_timeouts_default_and_clamp() {
+        let defaults = resolve_sim_timeouts(&json!({}));
+        assert_eq!(
+            defaults.total,
+            Duration::from_secs(DEFAULT_SIMC_TOTAL_TIMEOUT_SECS)
+        );
+        assert_eq!(
+            defaults.idle,
+            Duration::from_secs(DEFAULT_SIMC_IDLE_TIMEOUT_SECS)
+        );
+
+        let bounded = resolve_sim_timeouts(&json!({
+            "sim_timeout_seconds": 1,
+            "sim_idle_timeout_seconds": 999999
+        }));
+        assert_eq!(
+            bounded.total,
+            Duration::from_secs(MIN_SIMC_TOTAL_TIMEOUT_SECS)
+        );
+        assert_eq!(
+            bounded.idle,
+            Duration::from_secs(MAX_SIMC_IDLE_TIMEOUT_SECS)
+        );
+    }
+
+    #[test]
     fn get_process_stats_returns_none_for_unknown_job() {
         assert_eq!(get_process_stats("missing-job"), None);
     }
@@ -1842,6 +1939,7 @@ fight_style=Patchwerk
             true,
             "",
             false,
+            SimTimeouts::default(),
             |_, _| {},
             |_| {},
         )
@@ -1878,6 +1976,7 @@ fight_style=Patchwerk
             true,
             "",
             false,
+            SimTimeouts::default(),
             |_, _| {},
             |_| {},
         )
@@ -1907,6 +2006,7 @@ fight_style=Patchwerk
             true,
             "",
             false,
+            SimTimeouts::default(),
             |_, _| {},
             |_| {},
         )
@@ -1944,6 +2044,7 @@ fight_style=Patchwerk
             true,
             "",
             true,
+            SimTimeouts::default(),
             move |current, total| {
                 p.lock().unwrap().push((current, total));
             },

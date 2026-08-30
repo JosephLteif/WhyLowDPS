@@ -26,6 +26,10 @@ pub struct SimOptions {
     pub max_time: u32,
     #[serde(default)]
     pub threads: u32,
+    #[serde(default = "default_sim_timeout_seconds")]
+    pub sim_timeout_seconds: u64,
+    #[serde(default = "default_sim_idle_timeout_seconds")]
+    pub sim_idle_timeout_seconds: u64,
     #[serde(default)]
     pub talents: String,
     #[serde(default)]
@@ -146,6 +150,8 @@ impl SimOptions {
             "desired_targets": self.desired_targets,
             "max_time": self.max_time,
             "threads": self.threads,
+            "sim_timeout_seconds": self.sim_timeout_seconds,
+            "sim_idle_timeout_seconds": self.sim_idle_timeout_seconds,
             "simc_channel": self.simc_channel,
             "single_actor_batch": !self.has_raid_actors(),
             "dps_plot_stat": self.dps_plot_stat,
@@ -383,6 +389,12 @@ fn default_desired_targets() -> u32 {
 fn default_max_time() -> u32 {
     300
 }
+fn default_sim_timeout_seconds() -> u64 {
+    crate::simc_runner::DEFAULT_SIMC_TOTAL_TIMEOUT_SECS
+}
+fn default_sim_idle_timeout_seconds() -> u64 {
+    crate::simc_runner::DEFAULT_SIMC_IDLE_TIMEOUT_SECS
+}
 fn default_simc_channel() -> String {
     "bundled".to_string()
 }
@@ -433,6 +445,14 @@ mod tests {
         assert_eq!(req.options.target_error, 0.05);
         assert_eq!(req.options.desired_targets, 1);
         assert_eq!(req.options.max_time, 300);
+        assert_eq!(
+            req.options.sim_timeout_seconds,
+            crate::simc_runner::DEFAULT_SIMC_TOTAL_TIMEOUT_SECS
+        );
+        assert_eq!(
+            req.options.sim_idle_timeout_seconds,
+            crate::simc_runner::DEFAULT_SIMC_IDLE_TIMEOUT_SECS
+        );
         assert_eq!(req.options.simc_channel, "bundled");
         assert!(req.options.include_timeline);
         assert!(!req.options.include_trinket_matrix);

@@ -37,12 +37,7 @@ import { useDataCacheRefresh } from './useDataCacheRefresh';
 import { useDataFileStateManager } from './useDataFileStateManager';
 import { useSettingsUpdater } from './useSettingsUpdater';
 import { fetchReadiness, type ReadinessSnapshot } from '../lib/readiness';
-
-const PRESETS = [
-  { label: 'Balanced', pct: 0.3 },
-  { label: 'Performance', pct: 0.6 },
-  { label: 'Maximum', pct: 0.9 },
-] as const;
+import { SIMULATION_PERFORMANCE_PRESETS, getPresetThreads } from '../lib/sim-performance';
 
 type CloseBehaviorPreferenceResponse = {
   minimize_to_tray_on_close?: boolean | null;
@@ -909,8 +904,8 @@ export default function SettingsPage() {
     }
   };
 
-  const activePresetIdx = PRESETS.findIndex(
-    (p) => maxThreads > 0 && Math.max(1, Math.round(maxThreads * p.pct)) === threads
+  const activePresetIdx = SIMULATION_PERFORMANCE_PRESETS.findIndex(
+    (p) => maxThreads > 0 && getPresetThreads(maxThreads, p.pct) === threads
   );
 
   const selectSettingsTab = (tab: SettingsTab) => {
@@ -1096,8 +1091,8 @@ export default function SettingsPage() {
                   </span>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
-                  {PRESETS.map((p, i) => {
-                    const val = Math.max(1, Math.round(maxThreads * p.pct));
+                  {SIMULATION_PERFORMANCE_PRESETS.map((p, i) => {
+                    const val = getPresetThreads(maxThreads, p.pct);
                     return (
                       <button
                         key={p.label}

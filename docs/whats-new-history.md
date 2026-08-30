@@ -8,6 +8,12 @@ Add new work under the `Unreleased` section. The release workflow promotes that 
 
 ### Improvements
 
+#### Override simulation performance per launch
+
+Simulation launch controls now include a performance menu for one-time CPU thread overrides, while the main launch button continues to use the saved default.
+
+- Choose Balanced, Performance, or Maximum for an individual simulation without changing Settings.
+
 #### Paginate large Top Gear result lists
 
 Top Gear rankings now use fixed-size pages instead of mounting every combination in one list, keeping large result sets more responsive and reducing WebView memory use.

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import ErrorAlert from '../components/ErrorAlert';
+import SimulationLaunchButton from '../components/SimulationLaunchButton';
 import { useSimContext } from '../components/SimContext';
 import SimReturnNotice from '../components/shared/SimReturnNotice';
 import ConsumableMatrixSelector from '../components/shared/ConsumableMatrixSelector';
@@ -258,8 +259,8 @@ export function StatWeightsPageContent({ forcedMode }: StatWeightsPageContentPro
     },
   });
 
-  const handleSubmit = useCallback(() => {
-    submit();
+  const handleSubmit = useCallback((threadsOverride?: number) => {
+    void submit({ threadsOverride });
   }, [submit]);
 
   return (
@@ -429,11 +430,11 @@ export function StatWeightsPageContent({ forcedMode }: StatWeightsPageContentPro
           </div>
         )}
 
-        <button
-          type="submit"
-          data-tour="analysis-submit"
-          disabled={submitting || simcInput.trim().length < 10}
-          className="btn-primary w-full py-3 text-sm"
+        <SimulationLaunchButton
+          onSubmit={handleSubmit}
+          dataTour="analysis-submit"
+          submitting={submitting}
+          disabled={simcInput.trim().length < 10}
         >
           {submitting
             ? 'Running...'
@@ -444,9 +445,9 @@ export function StatWeightsPageContent({ forcedMode }: StatWeightsPageContentPro
                     ? 'Run Tier Slot Matrix'
                     : mode === 'consumable_matrix'
                       ? 'Run Consumable Matrix'
-                      : 'Run Stat Weights Simulation'
+                    : 'Run Stat Weights Simulation'
               )}
-        </button>
+        </SimulationLaunchButton>
       </form>
     </div>
   );

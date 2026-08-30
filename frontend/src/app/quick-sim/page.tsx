@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ErrorAlert from '../components/ErrorAlert';
+import SimulationLaunchButton from '../components/SimulationLaunchButton';
 import { useSimContext } from '../components/SimContext';
 import { useSimSubmit } from '../lib/useSimSubmit';
 
@@ -31,6 +32,13 @@ export default function QuickSimPage() {
     buildPayload,
     validate,
   });
+
+  const handleSubmit = useCallback(
+    (threadsOverride?: number) => {
+      void submit({ threadsOverride });
+    },
+    [submit]
+  );
 
   useEffect(() => {
     const inlineSubmit = inlineSubmitRef.current;
@@ -70,7 +78,7 @@ export default function QuickSimPage() {
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        submit();
+        handleSubmit();
       }}
       className="mobile-page-bottom space-y-6 pb-6"
     >
@@ -85,26 +93,27 @@ export default function QuickSimPage() {
             }}
           >
             <div className="pointer-events-auto bg-gradient-to-t from-[#111] via-[#111] to-transparent pt-6">
-              <button
-                type="submit"
-                disabled={submitting || !canSubmit}
-                className="btn-primary w-full py-3 text-sm"
+              <SimulationLaunchButton
+                onSubmit={handleSubmit}
+                submitting={submitting}
+                disabled={!canSubmit}
               >
                 {submitting ? 'Running...' : buttonLabel('Run Simulation')}
-              </button>
+              </SimulationLaunchButton>
             </div>
           </div>
         </div>
       ) : null}
 
       <div ref={inlineSubmitRef} data-tour="run-simulation">
-        <button
-          type="submit"
-          disabled={submitting || !canSubmit}
-          className="btn-primary w-full py-3 text-sm"
+        <SimulationLaunchButton
+          onSubmit={handleSubmit}
+          submitting={submitting}
+          disabled={!canSubmit}
+          dataTour="run-simulation"
         >
           {submitting ? 'Running...' : buttonLabel('Run Simulation')}
-        </button>
+        </SimulationLaunchButton>
       </div>
     </form>
   );

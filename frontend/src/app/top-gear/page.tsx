@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import ErrorAlert from '../components/ErrorAlert';
+import SimulationLaunchButton from '../components/SimulationLaunchButton';
 import { useSimContext } from '../components/SimContext';
 import TopGearItemSelector from '../components/TopGearItemSelector';
 import type { SavedVariantStudioState } from '../components/top-gear/TopGearVariantStudio';
@@ -917,8 +918,8 @@ export default function TopGearPage() {
     },
   });
 
-  const handleSubmit = useCallback(() => {
-    void submit();
+  const handleSubmit = useCallback((threadsOverride?: number) => {
+    void submit({ threadsOverride });
   }, [submit]);
   const hasSimcInput = simcInput.trim().length >= 10;
   const submitDisabled =
@@ -1064,17 +1065,17 @@ export default function TopGearPage() {
           }}
         >
           <div className="pointer-events-auto bg-gradient-to-t from-[#111] via-[#111] to-transparent pt-6">
-            <button
-              onClick={handleSubmit}
-              data-tour="top-gear-submit"
+            <SimulationLaunchButton
+              onSubmit={handleSubmit}
+              dataTour="top-gear-submit"
               disabled={submitDisabled}
-              className="btn-primary flex w-full items-center justify-center gap-2 py-3 text-sm"
+              submitting={submitting}
             >
               {submitting ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
-              Starting sim…
-            </>
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
+                  Starting sim…
+                </>
               ) : resolving ? (
                 'Resolving gear...'
               ) : hasSimcInput ? (
@@ -1082,7 +1083,7 @@ export default function TopGearPage() {
               ) : (
                 'Find Top Gear'
               )}
-            </button>
+            </SimulationLaunchButton>
           </div>
         </div>
       </div>

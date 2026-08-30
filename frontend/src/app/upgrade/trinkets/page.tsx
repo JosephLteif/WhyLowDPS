@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import ErrorAlert from '../../components/ErrorAlert';
 import ComboSummary from '../../components/ComboSummary';
 import StickyPageHeader from '../../components/StickyPageHeader';
+import SimulationLaunchButton from '../../components/SimulationLaunchButton';
 import SimReturnNotice from '../../components/shared/SimReturnNotice';
 import { useSimContext } from '../../components/SimContext';
 import { API_URL } from '../../lib/api';
@@ -758,6 +759,10 @@ export default function UpgradeTrinketsPage() {
     },
   });
 
+  const handleSubmit = useCallback((threadsOverride?: number) => {
+    void submit({ threadsOverride });
+  }, [submit]);
+
   const lockLabel = useCallback(
     (t: ParsedTrinket, fallback: string) => {
       const info = itemInfo[t.itemId];
@@ -809,7 +814,7 @@ export default function UpgradeTrinketsPage() {
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        submit();
+        handleSubmit();
       }}
       className="space-y-6"
     >
@@ -1025,14 +1030,14 @@ export default function UpgradeTrinketsPage() {
         </label>
       </div>
 
-      <button
-        type="submit"
-        data-tour="trinket-submit"
-        disabled={submitting || simcInput.trim().length < 10}
-        className="btn-primary w-full py-3 text-sm"
+      <SimulationLaunchButton
+        onSubmit={handleSubmit}
+        dataTour="trinket-submit"
+        submitting={submitting}
+        disabled={simcInput.trim().length < 10}
       >
         {submitting ? 'Running...' : buttonLabel('Run Trinket Matrix')}
-      </button>
+      </SimulationLaunchButton>
     </form>
   );
 }

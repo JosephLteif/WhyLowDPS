@@ -35,6 +35,10 @@ interface UseSimSubmitOptions {
   };
 }
 
+export type SimSubmitOptions = {
+  threadsOverride?: number;
+};
+
 function normalizeName(name: string): string {
   return name.trim().toLowerCase();
 }
@@ -197,7 +201,7 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
     }
   }, [lightMode, simcInput]);
 
-  const submit = useCallback(async () => {
+  const submit = useCallback(async ({ threadsOverride }: SimSubmitOptions = {}) => {
     setError('');
 
     if (validate) {
@@ -246,7 +250,7 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
         ...pagePayload,
         iterations: 10000,
         target_error: 0.1,
-        threads,
+        threads: threadsOverride ?? threads,
         simc_channel: simcChannel || 'bundled',
         ...(batchId ? { batch_id: batchId } : {}),
         ...(selectedTalent ? { talents: selectedTalent } : {}),

@@ -5,6 +5,7 @@ import { Loader2 } from 'lucide-react';
 import ErrorAlert from '../components/ErrorAlert';
 import ComboSummary from '../components/ComboSummary';
 import GearItemRow from '../components/GearItemRow';
+import SimulationLaunchButton from '../components/SimulationLaunchButton';
 import StickyPageHeader from '../components/StickyPageHeader';
 import { useSimContext } from '../components/SimContext';
 import SimReturnNotice from '../components/shared/SimReturnNotice';
@@ -330,7 +331,7 @@ export default function UpgradeComparePage() {
   ]);
 
   const {
-    submit: handleSubmit,
+    submit,
     submitting,
     error,
     buttonLabel,
@@ -347,6 +348,10 @@ export default function UpgradeComparePage() {
       }),
     },
   });
+
+  const handleSubmit = useCallback((threadsOverride?: number) => {
+    void submit({ threadsOverride });
+  }, [submit]);
 
   // Group candidates by primary upgrade currency
   const candidateGroups = useMemo(() => {
@@ -715,11 +720,11 @@ export default function UpgradeComparePage() {
       <ErrorAlert message={comboError || error} />
 
       <div className="mobile-safe-bottom sticky bottom-0 z-50 -mx-4 bg-gradient-to-t from-[#111] via-[#111] to-transparent px-4 pb-4 pt-6">
-        <button
-          onClick={handleSubmit}
-          data-tour="upgrade-submit"
+        <SimulationLaunchButton
+          onSubmit={handleSubmit}
+          dataTour="upgrade-submit"
+          submitting={submitting}
           disabled={
-            submitting ||
             selectedSlots.size === 0 ||
             !hasCurrencies ||
             comboComputing ||
@@ -727,7 +732,6 @@ export default function UpgradeComparePage() {
             comboLimitReached ||
             comboCount === 0
           }
-          className="btn-primary flex w-full items-center justify-center gap-2 py-3 text-sm"
         >
           {submitting ? (
             <>
@@ -737,7 +741,7 @@ export default function UpgradeComparePage() {
           ) : (
             submitLabel
           )}
-        </button>
+        </SimulationLaunchButton>
       </div>
     </div>
   );

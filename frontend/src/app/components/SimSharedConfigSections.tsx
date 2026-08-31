@@ -24,6 +24,7 @@ import {
 } from '@/lib/simc-parser';
 import { getCurrentWowPatch } from '../lib/wow-season-content';
 import { useGameContext } from '../lib/useGameContext';
+import { characterHref } from '../lib/routes';
 import { getFightStyleParamRules } from '../lib/fight-style';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import { useConsumableOptions } from '../lib/useConsumableOptions';
@@ -88,10 +89,7 @@ export function CharacterInfoBar({
   const [expanded, setExpanded] = useState(false);
   const profileUrl =
     info.region && info.server && info.name
-      ? `/character/${info.region.toLowerCase()}/${info.server
-          .toLowerCase()
-          .replace(/'/g, '')
-          .replace(/\s+/g, '-')}/${info.name.toLowerCase()}`
+      ? characterHref(info.region, info.server, info.name)
       : null;
 
   const classColor = CLASS_COLORS[info.className.toLowerCase().replace(/\s+/g, '')] || '#fff';

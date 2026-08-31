@@ -1,5 +1,5 @@
 {
-  "contentRevision": "Unreleased-fdf60565ffff",
+  "contentRevision": "Unreleased-8a866fdf6194",
   "releases": [
     {
       "version": "Unreleased",
@@ -100,6 +100,11 @@
             "Pushes to `dev` publish the tested moving developer release.",
             "Stable releases can promote the tested developer build from the Release workflow."
           ]
+        },
+        {
+          "category": "fix",
+          "title": "Select consumables without opening a web page",
+          "summary": "Consumable choices now select directly when you click their labels, while the Wowhead link is a separate, clearly marked action."
         },
         {
           "category": "fix",

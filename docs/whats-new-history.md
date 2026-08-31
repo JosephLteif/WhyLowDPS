@@ -83,6 +83,10 @@ The release pipeline now separates automated developer builds from stable releas
 
 ### Bug fixes
 
+#### Select consumables without opening a web page
+
+Consumable choices now select directly when you click their labels, while the Wowhead link is a separate, clearly marked action.
+
 #### Show the item's actual bonus stat
 
 Item badges now prioritize the equipped item's bonus IDs, so bonuses such as Leech no longer appear as a stale or incorrect stat.

@@ -163,6 +163,7 @@ jobs:
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
           DEV_VERSION: ${{ inputs.dev_version }}
           DEV_SHA: ${{ steps.select.outputs.dev_sha }}
           STABLE_VERSION: ${{ steps.select.outputs.stable_version }}
@@ -186,14 +187,22 @@ jobs:
           npm run sync:version
           npm install --package-lock-only --ignore-scripts
           npm install --prefix frontend --package-lock-only --ignore-scripts
+          node scripts/promote-changelog.js \
+            --version "${VERSION}" \
+            --date "$(date -u +%F)"
+          npm run sync:changelog
+          npm run check:changelog
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add VERSION package.json frontend/package.json Cargo.toml backend/Cargo.toml desktop/src-tauri/tauri.conf.json desktop/src-tauri/tauri.docker.conf.json package-lock.json frontend/package-lock.json Cargo.lock backend/Cargo.lock
+          git add VERSION package.json frontend/package.json Cargo.toml backend/Cargo.toml desktop/src-tauri/tauri.conf.json desktop/src-tauri/tauri.docker.conf.json package-lock.json frontend/package-lock.json Cargo.lock backend/Cargo.lock CHANGELOG.md docs/whats-new-history.md frontend/src/app/lib/changelog.generated.json
           git commit -m "chore(release): promote ${DEV_VERSION} to v${VERSION}"
 
           npm run verify:release -- "${VERSION}"
           RELEASE_SHA="$(git rev-parse HEAD)"
           git tag "v${VERSION}"
+          AUTH_HEADER="$(printf 'x-access-token:%s' "${RELEASE_TOKEN}" | base64 -w0)"
+          git -c "http.extraheader=AUTHORIZATION: basic ${AUTH_HEADER}" \
+            push "https://github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/master"
           AUTH_HEADER="$(printf 'x-access-token:%s' "${GITHUB_TOKEN}" | base64 -w0)"
           git -c "http.extraheader=AUTHORIZATION: basic ${AUTH_HEADER}" \
             push "https://github.com/${GITHUB_REPOSITORY}.git" "v${VERSION}"

@@ -1,10 +1,25 @@
 {
-  "contentRevision": "Unreleased-eb2ef1e175ce",
+  "contentRevision": "Unreleased-caf7f09a3a24",
   "releases": [
     {
       "version": "Unreleased",
       "date": "",
       "title": "Upcoming changes",
+      "entries": [
+        {
+          "category": "fix",
+          "title": "Keep stable release notes synchronized",
+          "summary": "Stable releases promoted from a developer build now move the release notes into the versioned archive and update the app and GitHub Pages data together.",
+          "items": [
+            "The promotion commit updates `master` so the published changelog cannot remain on `Unreleased` after a successful release."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "v5.0.0",
+      "date": "2026-08-31",
+      "title": "Stable release archive",
       "entries": [
         {
           "category": "improvement",

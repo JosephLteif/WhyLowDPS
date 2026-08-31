@@ -72,6 +72,26 @@ test('release workflow has a compact stable action selector', () => {
   assert.match(workflow, /needs: \[bump-version-stable, promote-dev, validate_republish\]/);
 });
 
+test('promote-dev publishes synchronized changelog state to master', () => {
+  const workflow = readRepositoryFile('.github/workflows/release.yml');
+  const promoteDev = workflow.slice(
+    workflow.indexOf('\n  promote-dev:'),
+    workflow.indexOf('\n  validate_republish:')
+  );
+
+  assert.match(
+    promoteDev,
+    /node scripts\/promote-changelog\.js[\s\S]*--version "\$\{VERSION\}"[\s\S]*--date/
+  );
+  assert.match(promoteDev, /npm run sync:changelog/);
+  assert.match(promoteDev, /npm run check:changelog/);
+  assert.match(
+    promoteDev,
+    /git add[\s\S]*CHANGELOG\.md docs\/whats-new-history\.md frontend\/src\/app\/lib\/changelog\.generated\.json/
+  );
+  assert.match(promoteDev, /push "https:\/\/github\.com\/\$\{GITHUB_REPOSITORY\}\.git" "HEAD:refs\/heads\/master"/);
+});
+
 test('dev release workflow is manual-only with selectable increments', () => {
   const workflow = readRepositoryFile('.github/workflows/dev-release.yml');
 

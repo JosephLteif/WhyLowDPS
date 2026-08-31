@@ -1,5 +1,5 @@
 {
-  "contentRevision": "Unreleased-3f3972f05942",
+  "contentRevision": "Unreleased-eb2ef1e175ce",
   "releases": [
     {
       "version": "Unreleased",
@@ -20,6 +20,15 @@
           "summary": "Simulation settings now let you control how long a simulation may run and how long it may go without producing output, with a two-hour total timeout by default.",
           "items": [
             "Adjust the total and no-output timeouts from Settings > Simulation; values are saved with your account."
+          ]
+        },
+        {
+          "category": "improvement",
+          "title": "Organize settings by purpose",
+          "summary": "Settings are now grouped into focused tabs so simulation controls, default options, and application behavior are easier to find.",
+          "items": [
+            "Default Options has its own tab, while Clipboard Import, Close Behavior, and Share over LAN are grouped under Application.",
+            "Removed the redundant Quick repairs panel in favor of the tab navigation."
           ]
         },
         {

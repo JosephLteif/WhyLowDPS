@@ -20,6 +20,13 @@ Simulation settings now let you control how long a simulation may run and how lo
 
 - Adjust the total and no-output timeouts from Settings > Simulation; values are saved with your account.
 
+#### Organize settings by purpose
+
+Settings are now grouped into focused tabs so simulation controls, default options, and application behavior are easier to find.
+
+- Default Options has its own tab, while Clipboard Import, Close Behavior, and Share over LAN are grouped under Application.
+- Removed the redundant Quick repairs panel in favor of the tab navigation.
+
 #### Paginate large Top Gear result lists
 
 Top Gear rankings now use fixed-size pages instead of mounting every combination in one list, keeping large result sets more responsive and reducing WebView memory use.

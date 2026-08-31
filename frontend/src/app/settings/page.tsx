@@ -78,7 +78,15 @@ type LanDevice = {
   active: boolean;
 };
 
-type SettingsTab = 'health' | 'simulation' | 'integrations' | 'data' | 'updates' | 'about';
+type SettingsTab =
+  | 'health'
+  | 'simulation'
+  | 'defaults'
+  | 'application'
+  | 'integrations'
+  | 'data'
+  | 'updates'
+  | 'about';
 
 function formatLanDeviceDate(timestamp?: number | null): string {
   if (!timestamp) return 'Never';
@@ -303,7 +311,16 @@ export default function SettingsPage() {
     ) as SettingsTab | null;
     if (
       requestedTab &&
-      ['health', 'simulation', 'integrations', 'data', 'updates', 'about'].includes(requestedTab)
+      [
+        'health',
+        'simulation',
+        'defaults',
+        'application',
+        'integrations',
+        'data',
+        'updates',
+        'about',
+      ].includes(requestedTab)
     ) {
       setActiveTab(requestedTab);
     }
@@ -986,6 +1003,8 @@ export default function SettingsPage() {
         {[
           { id: 'health', label: 'Health' },
           { id: 'simulation', label: 'Simulation' },
+          { id: 'defaults', label: 'Defaults' },
+          { id: 'application', label: 'Application' },
           { id: 'integrations', label: 'Integrations' },
           { id: 'data', label: 'Data Cache' },
           { id: 'updates', label: isHostedPrivate ? 'Docker Updates' : 'App Updates' },
@@ -1008,73 +1027,6 @@ export default function SettingsPage() {
         ))}
       </div>
 
-      <section
-        id="settings-panel-overview"
-        aria-labelledby="settings-overview-title"
-        className="rounded-xl border border-border/50 bg-surface/30 p-4 backdrop-blur-sm"
-      >
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 id="settings-overview-title" className="text-sm font-semibold text-zinc-100">
-              Quick repairs
-            </h2>
-            <p className="mt-1 text-xs text-zinc-500">
-              Jump directly to the settings area that needs attention.
-            </p>
-          </div>
-          <span className="text-[11px] text-zinc-600">Use Ctrl K to search these actions</span>
-        </div>
-        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-          {[
-            {
-              tab: 'health' as const,
-              label: 'System health',
-              status: readinessLoading
-                ? 'Checking…'
-                : readiness?.status === 'ready'
-                  ? 'Ready'
-                  : readiness
-                    ? 'Needs attention'
-                    : 'Unavailable',
-            },
-            {
-              tab: 'simulation' as const,
-              label: 'Simulation setup',
-              status: threads > 0 ? 'Ready' : 'Review defaults',
-            },
-            {
-              tab: 'integrations' as const,
-              label: 'Blizzard access',
-              status: isHostedPrivate
-                ? 'Hosted server configuration'
-                : hasSecret || clientId
-                  ? 'Configured'
-                  : 'Needs attention',
-            },
-            { tab: 'data' as const, label: 'Game data and backups', status: 'Refresh or restore' },
-            {
-              tab: 'updates' as const,
-              label: isHostedPrivate ? 'Docker image updates' : 'App and SimC updates',
-              status: isHostedPrivate
-                ? 'Latest and versioned images'
-                : isDesktop
-                  ? 'Desktop controls'
-                  : 'Release notes',
-            },
-          ].map((item) => (
-            <button
-              key={item.tab}
-              type="button"
-              onClick={() => selectSettingsTab(item.tab)}
-              className="rounded-lg border border-border/70 bg-surface-2/60 px-3 py-3 text-left transition-colors hover:border-gold/30 hover:bg-surface-2 focus:outline-none focus:ring-2 focus:ring-gold/40"
-            >
-              <span className="block text-xs font-semibold text-zinc-200">{item.label}</span>
-              <span className="mt-1 block text-[11px] text-zinc-500">{item.status}</span>
-            </button>
-          ))}
-        </div>
-      </section>
-
       {activeTab === 'health' && (
         <ReadinessPanel
           variant="details"
@@ -1091,8 +1043,8 @@ export default function SettingsPage() {
         />
       )}
 
-      {activeTab === 'simulation' && (
-        <div id="settings-panel-simulation">
+      {activeTab === 'defaults' && (
+        <div id="settings-panel-defaults">
           <DefaultOptionsSettingsCard />
         </div>
       )}
@@ -1240,7 +1192,7 @@ export default function SettingsPage() {
         </section>
       )}
 
-      {activeTab === 'simulation' && (
+      {activeTab === 'application' && (
         <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
           <h2 className="mb-3 text-xl font-semibold text-white">Clipboard Import</h2>
           <p className="mb-5 text-sm text-zinc-400">
@@ -1278,7 +1230,7 @@ export default function SettingsPage() {
         </section>
       )}
 
-      {activeTab === 'simulation' && isDesktop && (
+      {activeTab === 'application' && isDesktop && (
         <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
           <h2 className="mb-3 text-xl font-semibold text-white">Close Behavior</h2>
           <p className="mb-5 text-sm text-zinc-400">
@@ -1338,7 +1290,7 @@ export default function SettingsPage() {
         </section>
       )}
 
-      {activeTab === 'simulation' && isDesktop && (
+      {activeTab === 'application' && isDesktop && (
         <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
           <h2 className="mb-3 text-xl font-semibold text-white">Share over LAN</h2>
           <p className="mb-5 max-w-2xl text-sm text-zinc-400">

@@ -1,5 +1,5 @@
 {
-  "contentRevision": "Unreleased-dc53791b551a",
+  "contentRevision": "Unreleased-fdf60565ffff",
   "releases": [
     {
       "version": "Unreleased",
@@ -100,6 +100,11 @@
             "Pushes to `dev` publish the tested moving developer release.",
             "Stable releases can promote the tested developer build from the Release workflow."
           ]
+        },
+        {
+          "category": "fix",
+          "title": "Show the item's actual bonus stat",
+          "summary": "Item badges now prioritize the equipped item's bonus IDs, so bonuses such as Leech no longer appear as a stale or incorrect stat."
         },
         {
           "category": "fix",

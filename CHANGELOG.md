@@ -22,6 +22,7 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ### Fixed
 
+- Item bonus-stat badges now prioritize the equipped item's bonus IDs, preventing stale cached data from showing an incorrect stat such as Avoidance instead of Leech.
 - Rerunning a saved simulation now preserves its exact SimC input, options, item data, and specialized simulation metadata, then opens the new simulation's running page immediately instead of running only in the background.
 - Trinket heatmaps now use the selected target item level for fallback drops, so Myth 6/6 no longer simulates raw 108 item-level variants alongside 334 candidates.
 - Top Gear now keeps the combination count accurate when selecting all available gear items.

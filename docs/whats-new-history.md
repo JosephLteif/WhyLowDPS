@@ -83,6 +83,10 @@ The release pipeline now separates automated developer builds from stable releas
 
 ### Bug fixes
 
+#### Show the item's actual bonus stat
+
+Item badges now prioritize the equipped item's bonus IDs, so bonuses such as Leech no longer appear as a stale or incorrect stat.
+
 #### Rerun simulations with their original setup
 
 Rerunning a saved simulation now reuses its exact SimC input, options, item data, and specialized simulation metadata, so reruns no longer start with an empty item selection.

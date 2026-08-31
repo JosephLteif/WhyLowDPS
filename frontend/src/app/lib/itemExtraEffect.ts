@@ -148,13 +148,13 @@ export function getItemExtraEffects(
   },
   effectsByKey?: Record<string, ExtraEffect[]>
 ): ExtraEffect[] {
-  const fromItem = normalizeEffects(item.extra_effects);
-  if (fromItem.length > 0) return fromItem;
   const fromBonusIds = effectsFromKnownBonusIds(item.bonus_ids);
   if (fromBonusIds.length > 0) return fromBonusIds;
   const key = itemBonusKey(item.item_id, item.bonus_ids);
   const fromMap = normalizeEffects(effectsByKey?.[key]);
   if (fromMap.length > 0) return fromMap;
+  const fromItem = normalizeEffects(item.extra_effects);
+  if (fromItem.length > 0) return fromItem;
   return detectFromText({
     simc_string: item.simc_string || '',
     source_type: item.source_type || '',

@@ -34,7 +34,10 @@ export function labelsEqual(left?: string | null, right?: string | null): boolea
 
 function collapseUpgradeLabelPath(
   upgradeLabel: string,
-  equippedUpgradeLabel?: string | null
+  equippedUpgradeLabel?: string | null,
+  equippedTierLevelLabel?: string | null,
+  itemIlevel = 0,
+  equippedIlevel = 0
 ): string {
   const segments = upgradeLabel
     .split('->')
@@ -42,8 +45,29 @@ function collapseUpgradeLabelPath(
     .filter(Boolean);
   const target = segments[segments.length - 1] || '';
   const equipped = normalizeUpgradeLabel(equippedUpgradeLabel);
+  const equippedTier = normalizeUpgradeLabel(equippedTierLevelLabel);
 
   if (!target && !equipped) return '';
+  if (segments.length > 1) {
+    const current = [equippedTier, equipped.split('->')[0]?.trim() || ''].find((candidate) =>
+      segments.some((segment) => labelsEqual(segment, candidate))
+    );
+    if (current) {
+      const currentIndex = segments.findIndex((segment) => labelsEqual(segment, current));
+      const next = segments.slice(currentIndex === 0 ? 1 : 0).pop();
+      if (next && !labelsEqual(current, next)) return `${current} -> ${next}`;
+    }
+
+    const from = parseUpgradeTierLevel(segments[0]);
+    const to = parseUpgradeTierLevel(segments[segments.length - 1]);
+    const shouldReverse =
+      from &&
+      to &&
+      ((itemIlevel > equippedIlevel && from.level > to.level) ||
+        (itemIlevel < equippedIlevel && from.level < to.level));
+    if (shouldReverse) return `${segments[segments.length - 1]} -> ${segments[0]}`;
+  }
+
   if (!equipped) {
     if (segments.length > 1) {
       const previous = segments[segments.length - 2] || '';
@@ -80,7 +104,13 @@ export function formatUpgradePreviewLabel({
   upgradeLevels = 0,
   sourceType,
 }: UpgradePreviewLabelArgs): string {
-  const collapsed = collapseUpgradeLabelPath(upgradeLabel, equippedUpgradeLabel);
+  const collapsed = collapseUpgradeLabelPath(
+    upgradeLabel,
+    equippedUpgradeLabel,
+    equippedTierLevelLabel,
+    itemIlevel,
+    equippedIlevel
+  );
   const collapsedTarget =
     collapsed
       .split(/\s*->\s*/)

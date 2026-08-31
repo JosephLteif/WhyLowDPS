@@ -20,4 +20,23 @@ describe('formatUpgradePreviewLabel', () => {
       })
     ).toBe('Hero 1/6 -> Hero 3/6');
   });
+
+  it('corrects a reversed same-track label using item levels', () => {
+    expect(
+      formatUpgradePreviewLabel({
+        upgradeLabel: 'Champion 6/6 -> Champion 3/6',
+        equippedUpgradeLabel: 'Champion 3/6',
+        equippedIlevel: 298,
+        itemIlevel: 308,
+      })
+    ).toBe('Champion 3/6 -> Champion 6/6');
+
+    expect(
+      formatUpgradePreviewLabel({
+        upgradeLabel: 'Hero 6/6 -> Hero 3/6',
+        equippedIlevel: 311,
+        itemIlevel: 321,
+      })
+    ).toBe('Hero 3/6 -> Hero 6/6');
+  });
 });

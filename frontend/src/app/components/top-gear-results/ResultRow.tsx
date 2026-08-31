@@ -379,6 +379,8 @@ export default function ResultRow({
         equippedUpgradeLabel: String(equipped?.upgrade || ''),
         equippedTierLevelLabel: extractTierLevelLabel(equipped) || baselineTierBySlot[it.slot] || '',
         itemTierLevelLabel: extractTierLevelLabel(it),
+        itemIlevel: Number(it.ilevel || 0),
+        equippedIlevel: Number(equipped?.ilevel || 0),
         upgradeLevels: Number(it.upgrade_levels || 0),
       });
       const nextTierLevel = parseUpgradeTierLevel(tierText.split(/\s*->\s*/).pop() || '');

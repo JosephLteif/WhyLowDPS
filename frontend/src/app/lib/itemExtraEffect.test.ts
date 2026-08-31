@@ -5,7 +5,7 @@ describe('getItemExtraEffects', () => {
     expect(
       getItemExtraEffects({
         item_id: 123,
-        bonus_ids: [40],
+        bonus_ids: [41],
         extra_effects: ['Avoidance'],
       })
     ).toEqual(['Leech']);

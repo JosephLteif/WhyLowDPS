@@ -35,8 +35,8 @@ function effectsFromKnownBonusIds(bonusIds?: number[]): ExtraEffect[] {
   for (const bid of ids) {
     if (bid === 42) push('Speed');
     if (bid === 43) push('Indestructible');
-    if (bid === 40) push('Leech');
-    if (bid === 41) push('Avoidance');
+    if (bid === 40) push('Avoidance');
+    if (bid === 41) push('Leech');
   }
   return out;
 }

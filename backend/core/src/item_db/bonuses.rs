@@ -100,8 +100,8 @@ fn map_bonus_id_to_effect_name(bid: u64) -> Option<&'static str> {
         42 => Some("Speed"),
         43 => Some("Indestructible"),
         // Common tertiary ids observed across datasets.
-        40 => Some("Leech"),
-        41 => Some("Avoidance"),
+        40 => Some("Avoidance"),
+        41 => Some("Leech"),
         _ => None,
     }
 }
@@ -360,8 +360,8 @@ mod tests {
             ),
         ]);
 
-        let effects = resolve_extra_effects(&[42, 2001, 2002], &bonus_map);
-        assert_eq!(effects, vec!["Speed", "Indestructible"]);
+        let effects = resolve_extra_effects(&[40, 41, 42, 2001, 2002], &bonus_map);
+        assert_eq!(effects, vec!["Avoidance", "Leech", "Speed", "Indestructible"]);
 
         let debug = resolve_bonus_debug(&[9999, 2001, 2003], &bonus_map);
         assert_eq!(debug.unknown_bonus_ids, vec![9999]);

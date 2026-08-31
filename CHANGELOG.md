@@ -22,6 +22,7 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ### Fixed
 
+- The desktop app now persists the Light or Full Mode choice through updates and preserves completed guided tours for returning users.
 - Consumable picker labels now select their option directly; the separate, clearly labeled external-link button opens Wowhead.
 - Item bonus-stat badges now prioritize the equipped item's bonus IDs, preventing stale cached data from showing an incorrect stat such as Avoidance instead of Leech.
 - Rerunning a saved simulation now preserves its exact SimC input, options, item data, and specialized simulation metadata, then opens the new simulation's running page immediately instead of running only in the background.

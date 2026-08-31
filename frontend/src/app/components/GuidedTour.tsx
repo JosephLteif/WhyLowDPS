@@ -13,6 +13,7 @@ import {
 } from 'react';
 import { ArrowRight, X } from 'lucide-react';
 import { usePathname } from 'next/navigation';
+import { BROWSER_USER_SCOPE_CHANGED_EVENT } from '../lib/api';
 
 export type GuidedTourStepAction = {
   type: 'click-target' | 'input-target';
@@ -624,6 +625,13 @@ export function GuidedTourProvider({ children }: { children: ReactNode }) {
   const [activeTourId, setActiveTourId] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
 
+  useEffect(() => {
+    const refreshCompletedTours = () => setCompletedTours(readCompletedTours());
+    window.addEventListener(BROWSER_USER_SCOPE_CHANGED_EVENT, refreshCompletedTours);
+    return () =>
+      window.removeEventListener(BROWSER_USER_SCOPE_CHANGED_EVENT, refreshCompletedTours);
+  }, []);
+
   const currentTour = useMemo(
     () =>
       GUIDED_TOURS.find((tour) => tour.paths.some((path) => pathMatches(pathname, path))) || null,
@@ -986,7 +994,7 @@ function GuidedTourOverlay() {
       {spotlightStyle ? (
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute rounded-xl border-2 border-gold shadow-[0_0_0_2px_rgba(212,175,55,0.25),0_0_24px_rgba(212,175,55,0.35)]"
+          className="border-gold pointer-events-none absolute rounded-xl border-2 shadow-[0_0_0_2px_rgba(212,175,55,0.25),0_0_24px_rgba(212,175,55,0.35)]"
           style={spotlightStyle}
         />
       ) : null}
@@ -997,12 +1005,12 @@ function GuidedTourOverlay() {
         aria-modal="true"
         aria-labelledby="guided-tour-title"
         tabIndex={-1}
-        className="pointer-events-auto absolute rounded-2xl border border-gold/30 bg-[#14151d] p-5 text-left shadow-2xl shadow-black/60 outline-none"
+        className="border-gold/30 pointer-events-auto absolute rounded-2xl border bg-[#14151d] p-5 text-left shadow-2xl shadow-black/60 outline-none"
         style={cardPosition}
       >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gold">
+            <p className="text-gold text-[10px] font-bold tracking-[0.2em] uppercase">
               {activeTour.label} · {currentStep + 1} of {activeTour.steps.length}
             </p>
             <h2 id="guided-tour-title" className="mt-2 text-lg font-semibold text-zinc-100">
@@ -1038,14 +1046,14 @@ function GuidedTourOverlay() {
               </button>
             ) : null}
             {requiresAction ? (
-              <span className="max-w-[190px] text-right text-xs font-semibold text-gold">
+              <span className="text-gold max-w-[190px] text-right text-xs font-semibold">
                 {step.action?.prompt || 'Click the highlighted control to continue'}
               </span>
             ) : (
               <button
                 type="button"
                 onClick={nextStep}
-                className="inline-flex items-center gap-2 rounded-lg bg-gold px-3.5 py-2 text-xs font-bold text-black transition-colors hover:bg-gold-light"
+                className="bg-gold hover:bg-gold-light inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold text-black transition-colors"
               >
                 {isLastStep ? 'Finish' : 'Next'}
                 <ArrowRight className="h-3.5 w-3.5 opacity-60" />

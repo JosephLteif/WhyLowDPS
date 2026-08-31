@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  BROWSER_USER_SCOPE_CHANGED_EVENT,
   fetchJson,
   fetchJsonCached,
   isDesktopRuntime,
   isNetworkUnavailableError,
   setSessionToken,
+  switchBrowserUserScope,
 } from './api';
 
 const jsonResponse = (body: unknown, init?: ResponseInit) =>
@@ -147,6 +149,33 @@ describe('api helpers', () => {
 
     const { API_URL } = await import('./api');
     expect(API_URL).toBe('http://localhost:17384');
+  });
+
+  it('keeps completed tours device-local when switching browser user scopes', async () => {
+    const onScopeChanged = vi.fn();
+    window.addEventListener(BROWSER_USER_SCOPE_CHANGED_EVENT, onScopeChanged);
+    localStorage.setItem('whylowdps_guided_tours_v1', '["app-overview"]');
+    localStorage.setItem('whylowdps_sidebar_collapsed', 'true');
+
+    await switchBrowserUserScope('local-guest');
+
+    expect(localStorage.getItem('whylowdps_guided_tours_v1')).toBe('["app-overview"]');
+    expect(localStorage.getItem('whylowdps_user_scope:local-guest')).toBeNull();
+    expect(onScopeChanged).toHaveBeenCalledTimes(1);
+    window.removeEventListener(BROWSER_USER_SCOPE_CHANGED_EVENT, onScopeChanged);
+  });
+
+  it('restores legacy completed tours from the active user scope', async () => {
+    localStorage.setItem('whylowdps_active_user_scope', 'local-guest');
+    localStorage.setItem(
+      'whylowdps_user_scope:local-guest',
+      JSON.stringify({ whylowdps_guided_tours_v1: '["app-overview"]' })
+    );
+
+    await switchBrowserUserScope('local-guest');
+
+    expect(localStorage.getItem('whylowdps_guided_tours_v1')).toBe('["app-overview"]');
+    expect(localStorage.getItem('whylowdps_user_scope:local-guest')).toBeNull();
   });
 
   it('dedupes cached GET requests and uses persistent cache storage when fresh', async () => {

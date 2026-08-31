@@ -78,6 +78,8 @@ pub(crate) struct AppClosePreferences {
     pub(crate) discord_client_id: Option<String>,
     #[serde(default)]
     pub(crate) lan_sharing_enabled: bool,
+    #[serde(default)]
+    pub(crate) light_mode: Option<bool>,
 }
 
 #[derive(Debug)]
@@ -137,6 +139,11 @@ pub(crate) struct SimcUpdateChannelResponse {
 #[derive(serde::Serialize)]
 pub(crate) struct SimcRuntimeVersionPreferenceResponse {
     pub(crate) version: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+pub(crate) struct LightModePreferenceResponse {
+    pub(crate) light_mode: Option<bool>,
 }
 
 pub(crate) fn normalize_simc_update_channel(channel: &str) -> String {
@@ -230,6 +237,15 @@ pub(crate) fn set_lan_sharing_enabled_internal(
 ) -> Result<(), String> {
     let mut prefs = state.prefs.lock().map_err(|e| e.to_string())?;
     prefs.lan_sharing_enabled = enabled;
+    save_close_preferences(&state.path, &prefs)
+}
+
+pub(crate) fn set_light_mode_preference_internal(
+    state: &AppClosePreferencesState,
+    light_mode: bool,
+) -> Result<(), String> {
+    let mut prefs = state.prefs.lock().map_err(|e| e.to_string())?;
+    prefs.light_mode = Some(light_mode);
     save_close_preferences(&state.path, &prefs)
 }
 
@@ -795,6 +811,22 @@ mod tests {
             load_close_preferences(&path).minimize_to_tray_on_close,
             None
         );
+    }
+
+    #[test]
+    fn light_mode_preference_persists() {
+        let dir = test_temp_dir("prefs");
+        let path = dir.join("prefs.json");
+        let state = AppClosePreferencesState {
+            prefs: Mutex::new(AppClosePreferences::default()),
+            path: path.clone(),
+            lan_sharing_runtime_enabled: false,
+            simc_runtime: SimcRuntimeCoordinator::new(SimcReadiness::Missing),
+        };
+
+        set_light_mode_preference_internal(&state, false).unwrap();
+
+        assert_eq!(load_close_preferences(&path).light_mode, Some(false));
     }
 
     #[test]

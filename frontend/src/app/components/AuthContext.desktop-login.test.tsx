@@ -70,6 +70,26 @@ describe('AuthContext desktop login', () => {
     });
   });
 
+  it('restores the desktop full-mode preference when webview storage is missing', async () => {
+    mocks.invoke.mockImplementation((command: string) => {
+      if (command === 'get_light_mode_preference') return Promise.resolve({ light_mode: false });
+      if (command === 'load_session_token') return Promise.resolve(null);
+      return Promise.resolve();
+    });
+    mocks.fetchJson.mockResolvedValue({
+      id: 'local-guest',
+      battletag: 'Local Guest',
+      role: 'member',
+      guest: true,
+    });
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.lightMode).toBe(false);
+    expect(localStorage.getItem('whylowdps_full_mode')).toBe('1');
+  });
+
   it('passes saved credential profile id to desktop auth login', async () => {
     const { result } = renderHook(() => useAuth(), { wrapper });
 

@@ -83,6 +83,10 @@ The release pipeline now separates automated developer builds from stable releas
 
 ### Bug fixes
 
+#### Keep Full Mode after desktop updates
+
+The desktop app now keeps your Light or Full Mode choice after an update, so returning players are not sent through the tour again.
+
 #### Select consumables without opening a web page
 
 Consumable choices now select directly when you click their labels, while the Wowhead link is a separate, clearly marked action.

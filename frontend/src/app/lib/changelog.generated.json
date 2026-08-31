@@ -1,5 +1,5 @@
 {
-  "contentRevision": "Unreleased-8a866fdf6194",
+  "contentRevision": "Unreleased-3f3972f05942",
   "releases": [
     {
       "version": "Unreleased",
@@ -100,6 +100,11 @@
             "Pushes to `dev` publish the tested moving developer release.",
             "Stable releases can promote the tested developer build from the Release workflow."
           ]
+        },
+        {
+          "category": "fix",
+          "title": "Keep Full Mode after desktop updates",
+          "summary": "The desktop app now keeps your Light or Full Mode choice after an update, so returning players are not sent through the tour again."
         },
         {
           "category": "fix",

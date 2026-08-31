@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ## [Unreleased]
 
+### Fixed
+
+- Stable releases promoted from a developer build now synchronize the versioned changelog data and update `master` for GitHub Pages.
+
+## [5.0.0] - 2026-08-31
+
 ### Changed
 
 - Simulation launch controls now include one-time Balanced, Performance, and Maximum CPU thread overrides while the main launch button continues to use the saved default.

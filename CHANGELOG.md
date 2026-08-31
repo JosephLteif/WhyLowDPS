@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ## [Unreleased]
 
+No unreleased changes yet.
+
+## [5.0.1] - 2026-08-31
+
 ### Fixed
 
 - Stable releases promoted from a developer build now synchronize the versioned changelog data and update `master` for GitHub Pages.

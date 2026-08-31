@@ -503,9 +503,6 @@ pub const MAX_SIMC_IDLE_TIMEOUT_SECS: u64 = 3600;
 pub const MIN_SIMC_TOTAL_TIMEOUT_SECS: u64 = 15 * 60;
 pub const MAX_SIMC_TOTAL_TIMEOUT_SECS: u64 = 24 * 60 * 60;
 
-const SIMC_IDLE_TIMEOUT_SECS: u64 = DEFAULT_SIMC_IDLE_TIMEOUT_SECS;
-const SIMC_TOTAL_TIMEOUT_SECS: u64 = DEFAULT_SIMC_TOTAL_TIMEOUT_SECS;
-
 #[derive(Clone, Copy)]
 struct SimTimeouts {
     idle: Duration,
@@ -552,10 +549,6 @@ fn resolve_sim_timeouts(options: &Value) -> SimTimeouts {
             MAX_SIMC_TOTAL_TIMEOUT_SECS,
         )),
     }
-}
-
-fn timeout_for_next_output(now: Instant, total_deadline: Instant) -> Duration {
-    Duration::from_secs(SIMC_IDLE_TIMEOUT_SECS).min(total_deadline.saturating_duration_since(now))
 }
 
 fn timeout_for_next_output_with_idle(
@@ -1858,15 +1851,19 @@ fight_style=Patchwerk
     #[test]
     fn subprocess_timeout_uses_the_earlier_idle_or_total_deadline() {
         let now = std::time::Instant::now();
-        let total_deadline = now + Duration::from_secs(SIMC_IDLE_TIMEOUT_SECS + 5);
+        let idle_timeout = Duration::from_secs(DEFAULT_SIMC_IDLE_TIMEOUT_SECS);
+        let total_deadline = now + idle_timeout + Duration::from_secs(5);
 
         assert_eq!(
-            timeout_for_next_output(now, total_deadline),
-            Duration::from_secs(SIMC_IDLE_TIMEOUT_SECS)
+            timeout_for_next_output_with_idle(now, total_deadline, idle_timeout),
+            idle_timeout
         );
 
         let near_deadline = total_deadline - Duration::from_secs(1);
-        assert!(timeout_for_next_output(near_deadline, total_deadline) <= Duration::from_secs(1));
+        assert!(
+            timeout_for_next_output_with_idle(near_deadline, total_deadline, idle_timeout)
+                <= Duration::from_secs(1)
+        );
     }
 
     #[test]

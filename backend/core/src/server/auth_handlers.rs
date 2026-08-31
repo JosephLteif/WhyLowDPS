@@ -2996,8 +2996,8 @@ mod tests {
         assert_eq!(credential_rejected.status(), 400);
 
         let valid = set_user_config(
-            req,
-            state,
+            req.clone(),
+            state.clone(),
             store.clone(),
             web::Json(UserConfigUpdate {
                 key: "sim_threads".to_string(),

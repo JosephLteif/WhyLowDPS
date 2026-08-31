@@ -1,7 +1,7 @@
 use actix_web::{web, HttpRequest, HttpResponse};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use super::helpers::*;
@@ -10,10 +10,8 @@ use crate::addon_parser;
 use crate::game_data;
 use crate::gear_resolver;
 use crate::log_buffer::LogBuffer;
-use crate::models::{Job, JobStatus};
+use crate::models::Job;
 use crate::profileset_generator;
-use crate::result_parser;
-use crate::simc_runner;
 use crate::storage::JobStorage;
 
 mod droptimizer;
@@ -23,39 +21,12 @@ mod matrix;
 mod matrix_handlers;
 mod top_gear;
 
-use super::discord_webhook;
 pub(super) use droptimizer::create_droptimizer_sim;
 use heatmap::*;
 use items::*;
 use matrix::*;
 use matrix_handlers::*;
 pub(super) use top_gear::{create_top_gear_sim, get_top_gear_combo_count};
-
-fn resolve_simc_binary_for_request(
-    simc_path: &Path,
-    _options: &SimOptions,
-) -> Result<PathBuf, String> {
-    #[cfg(feature = "desktop")]
-    {
-        if simc_path.exists() {
-            return Ok(simc_path.to_path_buf());
-        }
-
-        Err(
-            "SimulationCraft is not available yet. Check your internet connection or update the SimC runtime from Settings."
-                .to_string(),
-        )
-    }
-
-    #[cfg(not(feature = "desktop"))]
-    {
-        if simc_path.exists() {
-            Ok(simc_path.to_path_buf())
-        } else {
-            Err(format!("simc binary not found at: {}", simc_path.display()))
-        }
-    }
-}
 
 pub(super) async fn create_sim(
     http_req: HttpRequest,
@@ -147,7 +118,7 @@ pub(super) async fn create_sim(
         return resp;
     }
 
-    let simc = match resolve_simc_binary_for_request(simc_path.get_ref(), &req.options) {
+    let simc = match resolve_simc_binary_for_request(simc_path.get_ref()) {
         Ok(path) => path,
         Err(detail) => return HttpResponse::BadRequest().json(json!({ "detail": detail })),
     };
@@ -166,87 +137,15 @@ pub(super) async fn create_sim(
     let job_id = job.id.clone();
     let created_at = job.created_at.clone();
     store.insert(job);
-    simc_runner::register_job_control(&job_id);
-
-    // Spawn background task
-    let store_clone = store.get_ref().clone();
-    let auth_clone = auth.get_ref().clone();
-    let job_id_clone = job_id.clone();
-    let logs = log_buffer.get_ref().clone();
-    let jid_logs = job_id.clone();
-
-    tokio::spawn(async move {
-        if !prepare_job_run(&store_clone, &job_id_clone).await {
-            simc_runner::cleanup_job_control(&job_id_clone);
-            logs.remove(&jid_logs);
-            return;
-        }
-        store_clone.update_progress(&job_id_clone, 20, "Simulating", "");
-        let logs_cb = logs.clone();
-        let jid_cb = jid_logs.clone();
-        let store_prog = store_clone.clone();
-        let jid_prog = job_id_clone.clone();
-
-        match simc_runner::run_simc(
-            &simc,
-            &job_id_clone,
-            &simc_input,
-            &options,
-            move |current, total| {
-                let pct = 20 + ((current as f64 / total as f64) * 80.0) as u8;
-                store_prog.update_progress(
-                    &jid_prog,
-                    pct,
-                    "Simulating",
-                    &format!("{}/{} iterations", current, total),
-                );
-            },
-            move |line| {
-                logs_cb.push_line(&jid_cb, line.to_string());
-            },
-        )
-        .await
-        {
-            Ok(output) => {
-                let mut parsed = result_parser::parse_simc_result(&output.json, true);
-                if let Some(job_snap) = store_clone.get(&job_id_clone) {
-                    if let Some(baseline_live_stats) = job_snap
-                        .options
-                        .as_ref()
-                        .and_then(|options| options.get("baseline_live_stats"))
-                        .filter(|stats| !stats.is_null())
-                    {
-                        if let Some(obj) = parsed.as_object_mut() {
-                            obj.insert(
-                                "baseline_live_stats".to_string(),
-                                baseline_live_stats.clone(),
-                            );
-                        }
-                    }
-                }
-                inject_realm(&mut parsed, &simc_input);
-                let result_str = serde_json::to_string(&parsed).unwrap_or_default();
-                let raw_str = serde_json::to_string(&output.json).ok();
-                store_clone.set_result(&job_id_clone, result_str, raw_str);
-                store_clone.set_report_files(&job_id_clone, output.html_report, output.text_output);
-                discord_webhook::spawn_sim_completion_notification(
-                    store_clone.clone(),
-                    auth_clone.clone(),
-                    job_id_clone.clone(),
-                );
-            }
-            Err(e) => {
-                let is_cancelled = store_clone
-                    .get(&job_id_clone)
-                    .map(|j| j.status == JobStatus::Cancelled)
-                    .unwrap_or(false);
-                if !is_cancelled {
-                    store_clone.set_error(&job_id_clone, e.to_string());
-                }
-            }
-        }
-        logs.remove(&jid_logs);
-    });
+    spawn_direct_sim(
+        store.get_ref().clone(),
+        auth.get_ref().clone(),
+        simc,
+        options,
+        job_id.clone(),
+        simc_input,
+        log_buffer.get_ref().clone(),
+    );
 
     HttpResponse::Ok().json(SimResponse {
         id: job_id,
@@ -369,15 +268,13 @@ mod tests {
         let temp = tempfile::tempdir().expect("temp simc dir");
         let simc = temp.path().join("simc-test");
         std::fs::write(&simc, "").expect("write fake simc");
-        let options = default_options();
-
         assert_eq!(
-            resolve_simc_binary_for_request(&simc, &options).expect("existing simc"),
+            resolve_simc_binary_for_request(&simc).expect("existing simc"),
             simc
         );
 
         let missing = temp.path().join("missing-simc");
-        let detail = resolve_simc_binary_for_request(&missing, &options).expect_err("missing simc");
+        let detail = resolve_simc_binary_for_request(&missing).expect_err("missing simc");
         assert_missing_simc_detail(&detail);
     }
 
@@ -846,7 +743,7 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn top_gear_combo_count_reports_limit_error_count() {
+    async fn top_gear_combo_count_reports_exact_count_over_configured_limit() {
         let req = parse_top_gear_req(json!({
             "simc_input": "warrior=\"Tester\"\nspec=fury\n",
             "selected_items": {
@@ -887,11 +784,11 @@ mod tests {
         let body = to_bytes(resp.into_body()).await.expect("response body");
         let payload: Value = serde_json::from_slice(&body).expect("json body");
         assert_eq!(payload.get("combo_count").and_then(Value::as_u64), Some(2));
-        assert!(payload
-            .get("error")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .contains("Too many combinations (2)"));
+        assert!(payload.get("error").is_none());
+        assert_eq!(
+            payload.get("limit_reached").and_then(Value::as_bool),
+            Some(true)
+        );
     }
 
     #[actix_web::test]

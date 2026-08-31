@@ -200,6 +200,8 @@ export default function SimStatus({
   const [transitioning, setTransitioning] = useState(false);
   const [actionError, setActionError] = useState('');
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [displayedStageElapsed, setDisplayedStageElapsed] = useState(activeStageElapsed ?? 0);
+  const previousStageRef = useRef(progressStage);
   const displayProgress = useSmoothedProgress(progress);
   const title = isPaused ? 'Paused' : progressStage || (isPending ? 'Queued' : 'Simulating');
   const hasStages = stagesCompleted && stagesCompleted.length > 0;
@@ -239,6 +241,21 @@ export default function SimStatus({
     const timer = window.setInterval(update, 1000);
     return () => window.clearInterval(timer);
   }, [createdAt, isRunning]);
+
+  useEffect(() => {
+    const serverElapsed = activeStageElapsed ?? 0;
+    const stageChanged = previousStageRef.current !== progressStage;
+    previousStageRef.current = progressStage;
+    setDisplayedStageElapsed((previous) =>
+      stageChanged ? Math.max(0, serverElapsed) : Math.max(previous, serverElapsed)
+    );
+
+    if (!isRunning || activeStageElapsed == null) return;
+    const timer = window.setInterval(() => {
+      setDisplayedStageElapsed((previous) => previous + 1);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [activeStageElapsed, isRunning, progressStage]);
 
   async function handleCancel() {
     if (!jobId || cancelling) return;
@@ -282,7 +299,7 @@ export default function SimStatus({
   }
 
   const runningStageElapsed =
-    activeStageElapsed != null ? Math.max(0, activeStageElapsed) : elapsedSeconds;
+    activeStageElapsed != null ? displayedStageElapsed : elapsedSeconds;
 
   return (
     <div className="flex w-full flex-col items-center space-y-6 py-16">

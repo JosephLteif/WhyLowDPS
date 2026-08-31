@@ -22,6 +22,11 @@ on:
         required: false
         default: ''
         type: string
+      dev_version:
+        description: 'Exact developer version to promote, such as 4.2.0-dev.6.1 (promote-dev only)'
+        required: false
+        default: ''
+        type: string
 
 jobs:
   bump-version-stable:
@@ -123,39 +128,68 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Checkout the tested dev build
+      - name: Checkout repository
         uses: actions/checkout@v7
         with:
-          ref: refs/tags/dev
           fetch-depth: 0
           token: ${{ secrets.RELEASE_TOKEN }}
+          persist-credentials: false
+
+      - name: Select tested dev build
+        id: select
+        shell: bash
+        env:
+          DEV_VERSION: ${{ inputs.dev_version }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${DEV_VERSION}" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-dev\.[0-9]+\.[0-9]+$ ]]; then
+            echo "promote-dev requires an exact developer version such as 4.2.0-dev.6.1"
+            exit 1
+          fi
+          VERSION="${BASH_REMATCH[1]}"
+          DEV_TAG="dev-build/${DEV_VERSION}"
+          if ! git ls-remote --exit-code origin "refs/tags/${DEV_TAG}" >/dev/null; then
+            echo "Developer source tag ${DEV_TAG} does not exist; run a new Dev Release after the immutable-tag workflow is deployed."
+            exit 1
+          fi
+          git fetch origin "refs/tags/${DEV_TAG}:refs/tags/${DEV_TAG}"
+          git checkout --detach "refs/tags/${DEV_TAG}"
+          DEV_SHA="$(git rev-parse HEAD)"
+          echo "stable_version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "dev_sha=${DEV_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: Create stable tag from tested dev build
         id: promote
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          DEV_VERSION: ${{ inputs.dev_version }}
+          DEV_SHA: ${{ steps.select.outputs.dev_sha }}
+          STABLE_VERSION: ${{ steps.select.outputs.stable_version }}
         run: |
           set -euo pipefail
-          VERSION="$(tr -d '\r\n' < VERSION)"
-          if [[ "${VERSION}" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-dev\.[0-9]+\.[0-9]+$ ]]; then
-            VERSION="${BASH_REMATCH[1]}"
-            printf '%s\n' "${VERSION}" > VERSION
-            npm run sync:version
-            npm install --package-lock-only --ignore-scripts
-            npm install --prefix frontend --package-lock-only --ignore-scripts
-            git add VERSION package.json frontend/package.json Cargo.toml backend/Cargo.toml desktop/src-tauri/tauri.conf.json desktop/src-tauri/tauri.docker.conf.json package-lock.json frontend/package-lock.json Cargo.lock backend/Cargo.lock
-            git commit -m "chore(release): promote dev build to v${VERSION}"
+          VERSION="${STABLE_VERSION}"
+          if git ls-remote --exit-code origin "refs/tags/v${VERSION}" >/dev/null; then
+            echo "Stable release tag v${VERSION} already exists; select a different developer version."
+            exit 1
           fi
 
-          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "The tested dev build must contain a stable version or a -dev version: ${VERSION}"
-            exit 1
+          git fetch origin master
+          git checkout --detach origin/master
+          SOURCE_PATCH="${RUNNER_TEMP}/dev-source.patch"
+          git diff --binary --no-renames origin/master "${DEV_SHA}" -- . ':(exclude).github/workflows/**' > "${SOURCE_PATCH}"
+          if [[ -s "${SOURCE_PATCH}" ]]; then
+            git apply "${SOURCE_PATCH}"
           fi
-          if git ls-remote --exit-code origin "refs/tags/v${VERSION}" >/dev/null; then
-            echo "Stable release tag v${VERSION} already exists; bump the dev version before promoting it."
-            exit 1
-          fi
+
+          printf '%s\n' "${VERSION}" > VERSION
+          npm run sync:version
+          npm install --package-lock-only --ignore-scripts
+          npm install --prefix frontend --package-lock-only --ignore-scripts
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add VERSION package.json frontend/package.json Cargo.toml backend/Cargo.toml desktop/src-tauri/tauri.conf.json desktop/src-tauri/tauri.docker.conf.json package-lock.json frontend/package-lock.json Cargo.lock backend/Cargo.lock
+          git commit -m "chore(release): promote ${DEV_VERSION} to v${VERSION}"
 
           npm run verify:release -- "${VERSION}"
           RELEASE_SHA="$(git rev-parse HEAD)"

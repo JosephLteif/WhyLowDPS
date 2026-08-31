@@ -4,6 +4,8 @@ import ComboPill from './ComboPill';
 interface ComboSummaryProps {
   comboCount: number;
   maxCombinations?: number;
+  isComputing?: boolean;
+  limitReached?: boolean;
   size?: 'sm' | 'md';
   glowWhenActive?: boolean;
   activeBy?: 'combos' | 'items';
@@ -17,6 +19,8 @@ interface ComboSummaryProps {
 export default function ComboSummary({
   comboCount,
   maxCombinations,
+  isComputing = false,
+  limitReached = false,
   size = 'sm',
   glowWhenActive = false,
   activeBy = 'combos',
@@ -33,6 +37,8 @@ export default function ComboSummary({
       <ComboPill
         comboCount={comboCount}
         maxCombinations={maxCombinations}
+        isComputing={isComputing}
+        limitReached={limitReached}
         size={size}
         glowWhenActive={glowWhenActive}
         activeBy={activeBy}

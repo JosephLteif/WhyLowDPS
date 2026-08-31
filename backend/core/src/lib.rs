@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 pub mod addon_parser;
 pub mod error;
 pub mod game_data;

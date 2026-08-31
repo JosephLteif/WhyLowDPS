@@ -556,6 +556,22 @@ fn clear_close_behavior_preference(
 }
 
 #[tauri::command]
+fn get_light_mode_preference(
+    state: tauri::State<'_, AppClosePreferencesState>,
+) -> LightModePreferenceResponse {
+    let light_mode = state.prefs.lock().ok().and_then(|prefs| prefs.light_mode);
+    LightModePreferenceResponse { light_mode }
+}
+
+#[tauri::command]
+fn set_light_mode_preference(
+    state: tauri::State<'_, AppClosePreferencesState>,
+    light_mode: bool,
+) -> Result<(), String> {
+    set_light_mode_preference_internal(&state, light_mode)
+}
+
+#[tauri::command]
 fn get_discord_presence_settings(
     preferences: tauri::State<'_, AppClosePreferencesState>,
     presence: tauri::State<'_, DiscordPresenceState>,
@@ -1122,6 +1138,8 @@ fn main() {
             get_close_behavior_preference,
             set_close_behavior_preference,
             clear_close_behavior_preference,
+            get_light_mode_preference,
+            set_light_mode_preference,
             get_simc_update_channel,
             set_simc_update_channel,
             get_simc_runtime_version,

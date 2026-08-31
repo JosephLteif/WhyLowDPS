@@ -47,6 +47,8 @@ interface TopGearItemSelectorProps {
   savedVariantCount?: number;
   globalAffixesEnabled?: boolean;
   comboCount: number;
+  comboComputing?: boolean;
+  comboLimitReached?: boolean;
   copyEnchants?: boolean;
   specName?: string | null;
   maxUpgrade?: boolean;
@@ -103,6 +105,8 @@ interface UpgradeOption {
   name: string;
   fullName: string;
   itemLevel: number;
+  costs?: Record<string, number>;
+  discounted?: boolean;
 }
 
 const DISPLAY_GROUPS: DisplayGroup[] = [
@@ -218,6 +222,19 @@ function clampUpgradeArrowChain(label: string): string {
   return previous && previous !== last ? `${previous} -> ${last}` : last;
 }
 
+function isLowLevelTopGearItem(item: ResolvedItem, groupItems: ResolvedItem[]): boolean {
+  const maxGroupIlevel = Math.max(
+    0,
+    ...groupItems.map((candidate) => Number(candidate.ilevel || 0))
+  );
+  const hasSeasonalItems = groupItems.some((candidate) => Number(candidate.season_id || 0) > 0);
+  return (
+    hasSeasonalItems &&
+    Number(item.season_id || 0) <= 0 &&
+    Number(item.ilevel || 0) <= maxGroupIlevel - 50
+  );
+}
+
 function formatCanonicalUpgradeLabel(
   selectedUpgradeRaw: string,
   equippedUpgradeRaw: string,
@@ -243,6 +260,8 @@ export default function TopGearItemSelector({
   savedVariantCount = 0,
   globalAffixesEnabled = false,
   comboCount,
+  comboComputing = false,
+  comboLimitReached = false,
   copyEnchants = false,
   specName = null,
   comboError,
@@ -284,6 +303,7 @@ export default function TopGearItemSelector({
   const {
     setUpgradeMenuFor,
     upgradeOptions,
+    upgradeCurrencies,
     loadingUpgrades,
     isAddItemOpen,
     setAddItemOpen,
@@ -533,7 +553,7 @@ export default function TopGearItemSelector({
   );
 
   const addUpgradedCopy = useCallback(
-    (item: ResolvedItem, option: any) => {
+    (item: ResolvedItem, option: UpgradeOption) => {
       const currentUpgradeBonusId = upgradeOptions.find((o) =>
         item.bonus_ids.includes(o.bonus_id)
       )?.bonus_id;
@@ -586,6 +606,7 @@ export default function TopGearItemSelector({
           simc_string: newSimcString,
           ilevel: option.itemLevel,
           upgrade: upgradeLabel,
+          upgrade_costs: option.costs || {},
         };
         slotRes.alternatives = [...slotRes.alternatives, copy];
       }
@@ -1181,20 +1202,11 @@ export default function TopGearItemSelector({
           }
         });
       });
-      const maxGroupIlevel = Math.max(
-        0,
-        ...equipped.map((item) => Number(item.ilevel || 0)),
-        ...alternatives.map((item) => Number(item.ilevel || 0))
-      );
-      const hasSeasonalItems = [...equipped, ...alternatives].some(
-        (item) => Number(item.season_id || 0) > 0
-      );
+      const groupItems = [...equipped, ...alternatives];
       const shouldHideAlternative = (item: ResolvedItem) => {
         const selected = selectedUids[item.slot]?.has(item.uid) || false;
         if (selected) return false;
-        const itemSeason = Number(item.season_id || 0);
-        const itemIlevel = Number(item.ilevel || 0);
-        return hasSeasonalItems && itemSeason <= 0 && itemIlevel <= maxGroupIlevel - 50;
+        return isLowLevelTopGearItem(item, groupItems);
       };
       const hiddenAlternatives = alternatives.filter(shouldHideAlternative);
       const visibleAlternatives =
@@ -1210,6 +1222,37 @@ export default function TopGearItemSelector({
       };
     }).filter((g) => g.equipped.length > 0 || g.alternatives.length > 0 || g.hiddenAlternativeCount > 0);
   }, [resolved, selectedUids, showAllLowLevelByGroup]);
+
+  const selectAllEligible = useCallback(() => {
+    const updated: Record<string, Set<string>> = {};
+
+    for (const group of DISPLAY_GROUPS) {
+      const groupItems = group.slots.flatMap((slot) => {
+        const slotRes = resolved.slots[slot];
+        return slotRes
+          ? [slotRes.equipped, ...slotRes.alternatives].filter(
+              (item): item is ResolvedItem => Boolean(item)
+            )
+          : [];
+      });
+
+      for (const slot of group.slots) {
+        const slotRes = resolved.slots[slot];
+        if (!slotRes) continue;
+
+        const eligible = new Set<string>();
+        if (slotRes.equipped) eligible.add(slotRes.equipped.uid);
+        for (const alternative of slotRes.alternatives) {
+          if (!alternative.off_spec && !isLowLevelTopGearItem(alternative, groupItems)) {
+            eligible.add(alternative.uid);
+          }
+        }
+        updated[slot] = eligible;
+      }
+    }
+
+    onSelectionChange(updated);
+  }, [onSelectionChange, resolved.slots]);
 
   const { vaultUids, catalystUids } = useMemo(() => {
     const vault: { uid: string; slot: string }[] = [];
@@ -2063,13 +2106,15 @@ export default function TopGearItemSelector({
     [resolved.slots, canManageAffixesForItem]
   );
   const comboBreakdown =
-    comboCount > 0
+    !comboComputing && !comboLimitReached && comboCount > 0
       ? `${Math.max(comboCount - 1, 0).toLocaleString()} normal combo(s) | +1 Currently Equipped`
       : null;
   const quickSelect = (
     <TopGearQuickSelect
       comboCount={comboCount}
       maxCombinations={effectiveMaxCombinations}
+      isComputing={comboComputing}
+      limitReached={comboLimitReached}
       comboBreakdown={comboBreakdown}
       hasSelection={hasSelection}
       vaultCount={vaultUids.length}
@@ -2083,6 +2128,7 @@ export default function TopGearItemSelector({
       onToggleVault={() => toggleGroup(vaultUids)}
       onToggleCatalyst={() => toggleGroup(catalystUids)}
       onSelectAll={selectAll}
+      onSelectAllEligible={selectAllEligible}
       onClear={deselectAll}
     />
   );
@@ -2133,6 +2179,7 @@ export default function TopGearItemSelector({
         otherTierOptions={otherTierOptions}
         loadingOtherTierOptions={loadingOtherTierOptions}
         upgradeOptions={upgradeOptions}
+        upgradeCurrencies={upgradeCurrencies}
         loadingUpgrades={loadingUpgrades}
         onClose={() => setContextMenu(null)}
         onLoadUpgradeOptions={loadUpgradeOptions}

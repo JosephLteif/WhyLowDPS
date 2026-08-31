@@ -4,6 +4,7 @@ import { useCallback, useEffect } from 'react';
 import { FileInput } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { isDesktop } from '../lib/api';
+import { simResultHref } from '../lib/routes';
 import { useSimContext } from './SimContext';
 import { useNotifications } from './shared/NotificationSystem';
 
@@ -50,7 +51,7 @@ export default function DesktopIntegrationListener() {
       } catch {
         // The result link remains usable in browser-like desktop environments.
       }
-      router.push(`/sim/${encodeURIComponent(id)}`);
+      router.push(simResultHref(id));
     },
     [router]
   );
@@ -76,6 +77,33 @@ export default function DesktopIntegrationListener() {
       try {
         const { listen } = await import('@tauri-apps/api/event');
         if (cancelled) return;
+
+        const removeSimCompletedListener = await listen<SimCompletedPayload>(
+          'whylowdps-sim-completed',
+          (event) => {
+            const payload = event.payload;
+            if (!payload?.id) return;
+
+            notify({
+              title: payload.status === 'done' ? 'Simulation finished' : 'Simulation update',
+              description: `${payload.player_name} · ${simTypeLabel(payload.sim_type)}`,
+              variant: payload.status === 'done' ? 'success' : 'info',
+              durationMs: 6000,
+              href: simResultHref(payload.id),
+              dedupeKey: `simulation:${payload.id}`,
+              icon: <FileInput className="h-4 w-4" strokeWidth={2} />,
+              action: {
+                label: 'Open result',
+                onClick: () => openResult(payload.id),
+              },
+            });
+          }
+        );
+        if (cancelled) {
+          removeSimCompletedListener();
+          return;
+        }
+        unlisten.push(removeSimCompletedListener);
 
         const removeFileImportListener = await listen<FileImportPayload>(
           'whylowdps-file-import',
@@ -110,33 +138,6 @@ export default function DesktopIntegrationListener() {
           return;
         }
         unlisten.push(removeDragDropListener);
-
-        const removeSimCompletedListener = await listen<SimCompletedPayload>(
-          'whylowdps-sim-completed',
-          (event) => {
-            const payload = event.payload;
-            if (!payload?.id) return;
-
-            notify({
-              title: payload.status === 'done' ? 'Simulation finished' : 'Simulation update',
-              description: `${payload.player_name} · ${simTypeLabel(payload.sim_type)}`,
-              variant: payload.status === 'done' ? 'success' : 'info',
-              durationMs: 6000,
-              href: `/sim/${encodeURIComponent(payload.id)}`,
-              dedupeKey: `simulation:${payload.id}`,
-              icon: <FileInput className="h-4 w-4" strokeWidth={2} />,
-              action: {
-                label: 'Open result',
-                onClick: () => openResult(payload.id),
-              },
-            });
-          }
-        );
-        if (cancelled) {
-          removeSimCompletedListener();
-          return;
-        }
-        unlisten.push(removeSimCompletedListener);
       } catch {
         // The web build and older desktop builds do not expose Tauri events.
       }

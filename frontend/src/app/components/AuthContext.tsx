@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import {
   API_URL,
   LAN_ACCESS_REQUIRED_STORAGE_KEY,
@@ -57,6 +58,15 @@ let authCheckInFlight: Promise<AuthUser | null> | null = null;
 const LIGHT_MODE_KEY = 'whylowdps_light_mode';
 const FULL_MODE_KEY = 'whylowdps_full_mode';
 
+async function persistDesktopLightModePreference(lightMode: boolean): Promise<void> {
+  if (!isDesktop) return;
+  try {
+    await invoke('set_light_mode_preference', { lightMode });
+  } catch (err) {
+    console.error('Failed to save desktop light mode preference:', err);
+  }
+}
+
 async function fetchCurrentUserOnce(): Promise<AuthUser | null> {
   if (!authCheckInFlight) {
     authCheckInFlight = (async () => {
@@ -79,9 +89,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [lanAccessRequired, setLanAccessRequired] = useState(false);
   const [lightMode, setLightMode] = useState(false);
+  const [modeInitialized, setModeInitialized] = useState(!isDesktop);
 
   useEffect(() => {
-    setLightMode(localStorage.getItem(LIGHT_MODE_KEY) === '1');
+    if (!isDesktop) {
+      setLightMode(localStorage.getItem(LIGHT_MODE_KEY) === '1');
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      let savedLightMode = localStorage.getItem(LIGHT_MODE_KEY) === '1';
+      try {
+        const preference = await Promise.race([
+          invoke<{ light_mode: boolean | null }>('get_light_mode_preference'),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 250)),
+        ]);
+        if (typeof preference?.light_mode === 'boolean') {
+          savedLightMode = preference.light_mode;
+          if (savedLightMode) {
+            localStorage.setItem(LIGHT_MODE_KEY, '1');
+            localStorage.removeItem(FULL_MODE_KEY);
+          } else {
+            localStorage.removeItem(LIGHT_MODE_KEY);
+            localStorage.setItem(FULL_MODE_KEY, '1');
+          }
+        }
+      } catch (err) {
+        console.error('Failed to restore desktop light mode preference:', err);
+      }
+      if (!cancelled) {
+        setLightMode(savedLightMode);
+        setModeInitialized(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -143,10 +188,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (!modeInitialized) return;
     const checkAuth = async () => {
       if (isDesktop) {
         try {
-          const { invoke } = await import('@tauri-apps/api/core');
           const storedToken = await Promise.race([
             invoke<string | null>('load_session_token'),
             new Promise<null>((resolve) => setTimeout(() => resolve(null), 250)),
@@ -199,7 +244,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     checkAuth();
-  }, [lightMode]);
+  }, [lightMode, modeInitialized]);
 
   const checkCredentialsStatus = useCallback(async () => {
     if (lightMode) return { globally_configured: false };
@@ -223,6 +268,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     localStorage.setItem(LIGHT_MODE_KEY, '1');
     localStorage.removeItem(FULL_MODE_KEY);
+    void persistDesktopLightModePreference(true);
     void switchBrowserUserScope('local-guest');
     setSessionToken(null);
     setUser(null);
@@ -233,6 +279,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const disableLightMode = useCallback(() => {
     localStorage.removeItem(LIGHT_MODE_KEY);
     localStorage.setItem(FULL_MODE_KEY, '1');
+    void persistDesktopLightModePreference(false);
     setLightMode(false);
     setLoading(true);
   }, []);
@@ -259,6 +306,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       forceAccountSelection = false
     ) => {
       localStorage.removeItem(LIGHT_MODE_KEY);
+      void persistDesktopLightModePreference(false);
       setLightMode(false);
       const flowId = createUuid();
       let url = `${API_URL}/api/auth/bnet/login?flow_id=${flowId}`;
@@ -281,13 +329,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         startPolling(flowId);
         void (async () => {
           try {
-            const { invoke } = await import('@tauri-apps/api/core');
             // Pass raw URL; desktop command encodes once for Blizzard logout ref.
             await invoke('open_auth_window', { url });
           } catch (err) {
             console.error('Failed to use Tauri internal window, falling back to shell:', err);
             try {
-              const { invoke } = await import('@tauri-apps/api/core');
               await invoke('open_external_url', { url });
             } catch (shellErr) {
               console.error('Shell fallback failed:', shellErr);
@@ -313,7 +359,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (token) {
             setSessionToken(token);
             if (isDesktop) {
-              const { invoke } = await import('@tauri-apps/api/core');
               await invoke('save_session_token', { token });
             }
             clearInterval(interval);
@@ -345,9 +390,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         navigator.serviceWorker?.controller?.postMessage({ type: 'CLEAR_USER_CACHE' });
         setSessionToken(null);
         if (isDesktop) {
-          void import('@tauri-apps/api/core').then(({ invoke }) =>
-            invoke('save_session_token', { token: null })
-          );
+          void invoke('save_session_token', { token: null });
         }
         setUser(null);
         if (switchAccount) {

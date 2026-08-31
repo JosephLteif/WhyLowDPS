@@ -23,6 +23,7 @@ import PwaUpdatePrompt from './components/PwaUpdatePrompt';
 import PwaInstallPrompt from './components/PwaInstallPrompt';
 import { NotificationProvider } from './components/shared/NotificationSystem';
 import { GuidedTourProvider } from './components/GuidedTour';
+import SimulationActivity from './components/SimulationActivity';
 import './globals.css';
 import React from 'react';
 
@@ -76,6 +77,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     <CloseBehaviorPrompt />
                     <DiscordInvitePrompt />
                     <ChangelogPopup />
+                    <SimulationActivity />
                     <DesktopIntegrationListener />
                     <DesktopRichPresence />
                     <CommandPalette />

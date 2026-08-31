@@ -17,6 +17,8 @@ vi.mock('../components/SimContext', () => ({
     simcInput: 'mage="Alice"\nserver=Illidan\nregion=us\n',
     fightStyle: 'Patchwerk',
     threads: 1,
+    simTimeoutSeconds: 7200,
+    simIdleTimeoutSeconds: 600,
     selectedTalent: '',
     targetCount: 1,
     fightLength: 300,
@@ -88,5 +90,33 @@ describe('useSimSubmit light mode', () => {
     expect(urls).toContain('/api/sim');
     expect(urls.some((url) => url.includes('/api/bnet/'))).toBe(false);
     expect(urls.some((url) => url.includes('/api/blizzard/'))).toBe(false);
+  });
+
+  it('uses a one-time thread override without changing the saved default', async () => {
+    let submittedBody: Record<string, unknown> | undefined;
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/api/sim') {
+        submittedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return Promise.resolve(jsonResponse({ id: 'sim-override' }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { result } = renderHook(() =>
+      useSimSubmit({
+        endpoint: '/api/sim',
+        buildPayload: () => ({ sim_type: 'quick', simc_input: 'mage="Alice"' }),
+      })
+    );
+
+    await act(async () => {
+      await result.current.submit({ threadsOverride: 4 });
+    });
+
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/sim/sim-override'));
+    expect(submittedBody?.threads).toBe(4);
+    expect(submittedBody?.sim_timeout_seconds).toBe(7200);
+    expect(submittedBody?.sim_idle_timeout_seconds).toBe(600);
   });
 });

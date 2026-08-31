@@ -143,7 +143,7 @@ fn public_light_mode_request(req: &ServiceRequest) -> bool {
         let action = segments.next();
         return is_read
             || (is_write
-                && matches!(action, Some("cancel" | "pause" | "resume"))
+                && matches!(action, Some("cancel" | "pause" | "resume" | "rerun"))
                 && segments.next().is_none());
     }
 
@@ -448,6 +448,10 @@ mod tests {
                     web::get().to(|| async { HttpResponse::Ok().finish() }),
                 )
                 .route(
+                    "/api/sim/{id}/rerun",
+                    web::post().to(|| async { HttpResponse::Ok().finish() }),
+                )
+                .route(
                     "/api/data/files/{key}/content",
                     web::get().to(|| async { HttpResponse::Ok().finish() }),
                 )
@@ -468,6 +472,17 @@ mod tests {
         )
         .await;
         assert_eq!(create_response.status(), actix_web::http::StatusCode::OK);
+
+        let rerun_response = call_service(
+            &app,
+            TestRequest::post()
+                .uri("/api/sim/job-1/rerun")
+                .insert_header(("host", "localhost"))
+                .insert_header(("origin", "http://localhost"))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(rerun_response.status(), actix_web::http::StatusCode::OK);
 
         let status_response =
             call_service(&app, TestRequest::get().uri("/api/sim/job-1").to_request()).await;
@@ -1178,6 +1193,10 @@ pub async fn start_with_storage_bind_options_and_simc_runtime(
                 )
                 // Job management routes
                 .route("/api/sim/{id}", web::get().to(job_handlers::get_sim_status))
+                .route(
+                    "/api/sim/{id}/rerun",
+                    web::post().to(job_handlers::rerun_sim),
+                )
                 .route(
                     "/api/sim/{id}/related",
                     web::get().to(job_handlers::list_related_sims),

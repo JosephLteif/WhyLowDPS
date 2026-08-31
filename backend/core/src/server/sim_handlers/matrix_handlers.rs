@@ -51,7 +51,7 @@ pub(super) async fn create_external_buff_matrix_sim(
     job.combo_metadata_json = Some(meta_json);
     store.insert(job);
 
-    let simc_binary = match resolve_simc_binary_for_request(simc_path.get_ref(), options) {
+    let simc_binary = match resolve_simc_binary_for_request(simc_path.get_ref()) {
         Ok(path) => path,
         Err(detail) => return HttpResponse::BadRequest().json(json!({ "detail": detail })),
     };
@@ -124,7 +124,7 @@ pub(super) async fn create_consumable_matrix_sim(
     job.combo_metadata_json = Some(meta_json);
     store.insert(job);
 
-    let simc_binary = match resolve_simc_binary_for_request(simc_path.get_ref(), options) {
+    let simc_binary = match resolve_simc_binary_for_request(simc_path.get_ref()) {
         Ok(path) => path,
         Err(detail) => return HttpResponse::BadRequest().json(json!({ "detail": detail })),
     };

@@ -7,8 +7,11 @@ import {
   useNotifications,
 } from './NotificationSystem';
 
+const navigationState = vi.hoisted(() => ({ pathname: '/' }));
+
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
+  usePathname: () => navigationState.pathname,
 }));
 
 function NotificationTrigger() {
@@ -56,11 +59,14 @@ describe('NotificationSystem', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     window.localStorage.clear();
+    window.history.replaceState({}, '', '/');
+    navigationState.pathname = '/';
   });
 
   afterEach(() => {
     vi.useRealTimers();
     window.localStorage.clear();
+    window.history.replaceState({}, '', '/');
   });
 
   it('auto-dismisses after the configured duration and waits for the exit animation', () => {
@@ -189,6 +195,65 @@ describe('NotificationSystem', () => {
     expect(screen.getByText('1 unread')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Mark all notifications as read' }));
+    expect(screen.getByText('All caught up')).toBeInTheDocument();
+  });
+
+  it('marks a notification read when its destination page is opened', () => {
+    const view = render(
+      <NotificationProvider>
+        <NotificationCenter />
+        <HistoryNotificationTrigger />
+      </NotificationProvider>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Notify with history' }));
+    fireEvent.click(screen.getByRole('button', { name: /Notifications/ }));
+    expect(screen.getByText('1 unread')).toBeInTheDocument();
+
+    navigationState.pathname = '/sim/result-123';
+    view.rerender(
+      <NotificationProvider>
+        <NotificationCenter />
+        <HistoryNotificationTrigger />
+      </NotificationProvider>
+    );
+
+    expect(screen.getByText('All caught up')).toBeInTheDocument();
+  });
+
+  it('collapses legacy simulation duplicates and reads them on the desktop result route', () => {
+    window.localStorage.setItem(
+      'whylowdps_notification_history',
+      JSON.stringify([
+        {
+          id: 'legacy-1',
+          title: 'Simulation finished',
+          description: 'Lazaruss · Quick Sim',
+          href: '/sim/result-123',
+          createdAt: 1,
+          read: false,
+        },
+        {
+          id: 'legacy-2',
+          title: 'Simulation finished',
+          description: 'Lazaruss · Quick Sim',
+          href: '/sim/result-123',
+          createdAt: 2,
+          read: false,
+        },
+      ])
+    );
+    navigationState.pathname = '/sim/_/';
+    window.history.replaceState({}, '', '/sim/_/?id=result-123');
+
+    render(
+      <NotificationProvider>
+        <NotificationCenter />
+      </NotificationProvider>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Notifications/ }));
+    expect(screen.getAllByText('Simulation finished')).toHaveLength(1);
     expect(screen.getByText('All caught up')).toBeInTheDocument();
   });
 });

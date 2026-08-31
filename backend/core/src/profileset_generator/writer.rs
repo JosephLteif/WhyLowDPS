@@ -326,6 +326,9 @@ pub fn item_meta(item: &ResolvedItem, slot: &str) -> Value {
     if item.instance_id > 0 {
         meta["instance_id"] = json!(item.instance_id);
     }
+    if let Some(current_season) = item.current_season {
+        meta["current_season"] = json!(current_season);
+    }
     if item.is_catalyst {
         meta["is_catalyst"] = json!(true);
     }
@@ -523,6 +526,7 @@ mod tests {
         item.source_type = "raid".to_string();
         item.encounter_id = 101;
         item.instance_id = 202;
+        item.current_season = Some(false);
         item.is_catalyst = true;
         item.upgrade_costs = HashMap::from([(3008, 12), (3009, 4)]);
 
@@ -539,6 +543,10 @@ mod tests {
         );
         assert_eq!(meta.get("encounter_id").and_then(Value::as_i64), Some(101));
         assert_eq!(meta.get("instance_id").and_then(Value::as_i64), Some(202));
+        assert_eq!(
+            meta.get("current_season").and_then(Value::as_bool),
+            Some(false)
+        );
         assert_eq!(meta.get("is_catalyst").and_then(Value::as_bool), Some(true));
         assert_eq!(
             meta.get("upgrade_costs")

@@ -16,12 +16,11 @@ import { useRouter } from 'next/navigation';
 import type { ResultItem, TopGearResult } from '../lib/types';
 import { useTopGearResults } from './top-gear-results/useTopGearResults';
 import { useAuth } from './AuthContext';
-import RankingsHeader from './top-gear-results/RankingsHeader';
-import ResultRow from './top-gear-results/ResultRow';
-import RankedResults from './top-gear-results/RankedResults';
+import RankedResults, { ResultList } from './top-gear-results/RankedResults';
 import SimResultTalentsCard from './SimResultTalentsCard';
 import { addItemsToWishlist, buildWishlistOwnerKey, isWishlisted, removeFromWishlist } from '../lib/wishlist';
 import type { DropItem, Instance } from '../drop-finder/types';
+import { trackSimulations } from '../lib/sim-tracking';
 
 interface TopGearResultsProps {
   parentSimId?: string;
@@ -445,6 +444,7 @@ export default function TopGearResults({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(buildExactStatsRequest(exactInput, simOptions, parentSimId)),
         });
+        trackSimulations([{ id: created.id, simType: 'top_gear_exact_stats', playerName }]);
         await linkSimToParentCharacter({
           jobId: created.id,
           name: playerName,
@@ -517,6 +517,7 @@ export default function TopGearResults({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(buildExactStatsRequest(exactInput, simOptions, parentSimId)),
         });
+        trackSimulations([{ id: created.id, simType: 'top_gear_exact_stats', playerName }]);
         await linkSimToParentCharacter({
           jobId: created.id,
           name: playerName,
@@ -993,53 +994,30 @@ export default function TopGearResults({
                       </span>
                     </div>
                   )}
-                  <RankingsHeader />
-                  <div className="space-y-1">
-                    {group.map((result) => (
-                      <ResultRow
-                        key={result.name}
-                        result={result}
-                        maxDps={maxDps}
-                        baseDps={baseDps}
-                        equippedGear={equippedGear}
-                        baseAvgIlevel={baseAvgIlevel}
-                        isBest={result === results[0] && result.delta > 0}
-                        isSelected={result.name === (selectedResultName || results[0]?.name)}
-                        onSelect={() => setSelectedResultName(result.name)}
-                        itemInfoMap={itemInfoMap}
-                        enchantInfoMap={enchantInfoMap}
-                        gemInfoMap={gemInfoMap}
-                        currencies={currencies}
-                        dropBaselineIlevelByKey={dropBaselineIlevelByKey}
-                        exactStatsStatus={getExactStatsStatus(result).status}
-                        exactStatsLabel={getExactStatsStatus(result).label}
-                        onLoadExactStats={() => {
-                          void openOrStartExactStats(result);
-                        }}
-                        exactStatsButtonLabel={
-                          getExactStatsStatus(result).status === 'loading'
-                            ? 'Starting...'
-                            : getExactStatsStatus(result).status === 'ready' ||
-                                getExactStatsStatus(result).status === 'error'
-                              ? 'Go to Sim'
-                              : 'Start Sim'
-                        }
-                        exactStatsButtonVariant={
-                          getExactStatsStatus(result).status === 'ready' ||
-                          getExactStatsStatus(result).status === 'error'
-                            ? 'goto'
-                            : 'start'
-                        }
-                        exactStatsButtonDisabled={getExactStatsStatus(result).status === 'loading'}
-                        onAddToWishlist={
-                          enableWishlistActions ? () => toggleResultWishlist(result) : undefined
-                        }
-                        isWishlisted={enableWishlistActions ? isResultWishlisted(result) : false}
-                        sourceInstances={sourceInstances}
-                        baselineTierBySlot={baselineTierBySlot}
-                      />
-                    ))}
-                  </div>
+                  <ResultList
+                    results={group}
+                    maxDps={maxDps}
+                    baseDps={baseDps}
+                    equippedGear={equippedGear}
+                    baseAvgIlevel={baseAvgIlevel}
+                    itemInfoMap={itemInfoMap}
+                    enchantInfoMap={enchantInfoMap}
+                    gemInfoMap={gemInfoMap}
+                    selectedResultName={selectedResultName}
+                    onSelectResult={setSelectedResultName}
+                    currencies={currencies}
+                    dropBaselineIlevelByKey={dropBaselineIlevelByKey}
+                    getExactStatsStatus={getExactStatsStatus}
+                    onLoadExactStats={(result) => {
+                      void openOrStartExactStats(result);
+                    }}
+                    onAddResultToWishlist={enableWishlistActions ? toggleResultWishlist : undefined}
+                    isResultWishlisted={enableWishlistActions ? isResultWishlisted : undefined}
+                    sourceInstances={sourceInstances}
+                    baselineTierBySlot={baselineTierBySlot}
+                    showRanks={false}
+                    isBestResult={(result) => result === results[0] && result.delta > 0}
+                  />
                 </div>
               )
             )}

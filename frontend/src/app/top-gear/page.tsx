@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import ErrorAlert from '../components/ErrorAlert';
+import SimulationLaunchButton from '../components/SimulationLaunchButton';
 import { useSimContext } from '../components/SimContext';
 import TopGearItemSelector from '../components/TopGearItemSelector';
 import type { SavedVariantStudioState } from '../components/top-gear/TopGearVariantStudio';
@@ -27,7 +28,6 @@ interface LocalGearItem {
   simc_string: string;
   origin: string;
 }
-
 function appendLocalItemsToSimcInput(baseInput: string, localItems: LocalGearItem[]): string {
   let result = baseInput;
   if (localItems.length === 0) return result;
@@ -60,6 +60,31 @@ function pairedTopGearSlot(slot: string): string | null {
   if (slot === 'trinket1') return 'trinket2';
   if (slot === 'trinket2') return 'trinket1';
   return null;
+}
+
+function uidIdentity(uid: string): string {
+  const index = uid.lastIndexOf(':');
+  return index >= 0 ? uid.slice(0, index) : uid;
+}
+
+function uidCoreKey(uid: string): string | null {
+  const parts = uid.split(':');
+  const itemId = Number(parts[0]);
+  if (!Number.isFinite(itemId) || itemId <= 0) return null;
+  const origin = parts.find((part) => part === 'equipped' || part === 'bags' || part === 'vault');
+  return origin ? `${itemId}:${origin}` : null;
+}
+
+function itemCoreKey(item: Pick<ResolvedItem, 'item_id' | 'origin'>): string {
+  return `${item.item_id}:${item.origin}`;
+}
+
+function uidMatchesItem(uid: string, item: ResolvedItem): boolean {
+  return (
+    uid === item.uid ||
+    uidIdentity(uid) === uidIdentity(item.uid) ||
+    uidCoreKey(uid) === itemCoreKey(item)
+  );
 }
 
 function buildVariantRuleBaseKey(item: ResolvedItem): string {
@@ -146,6 +171,9 @@ export default function TopGearPage() {
   const [catalystCharges, setCatalystCharges] = useState<number | null>(null);
   const [resolving, setResolving] = useState(false);
   const [comboCount, setComboCount] = useState(0);
+  const [comboComputing, setComboComputing] = useState(false);
+  const [comboCountComputed, setComboCountComputed] = useState(false);
+  const [comboLimitReached, setComboLimitReached] = useState(false);
   const [comboError, setComboError] = useState('');
   const [returnNotice, setReturnNotice] = useState<SimReturnNoticeType | null>(null);
   const [compareConsumables, setCompareConsumables] = useState(false);
@@ -493,17 +521,22 @@ export default function TopGearPage() {
       const allSlotItems = [...slotItems, ...virtualItems];
       const included = new Set<string>();
       for (const uid of uids) {
-        const item = allSlotItems.find((candidate) => candidate.uid === uid);
-        if (!item) continue;
-        if (
-          globalAffixesEnabled &&
-          replacedBaseKeys.size > 0 &&
-          !virtualItems.some((virtualItem) => virtualItem.uid === item.uid) &&
-          replacedBaseKeys.has(buildVariantRuleBaseKey(item))
-        ) {
+        const matches = allSlotItems.filter((candidate) => uidMatchesItem(uid, candidate));
+        if (matches.length === 0) {
+          included.add(uid);
           continue;
         }
-        included.add(item.uid);
+        for (const item of matches) {
+          if (
+            globalAffixesEnabled &&
+            replacedBaseKeys.size > 0 &&
+            !virtualItems.some((virtualItem) => virtualItem.uid === item.uid) &&
+            replacedBaseKeys.has(buildVariantRuleBaseKey(item))
+          ) {
+            continue;
+          }
+          included.add(item.uid);
+        }
       }
       if (globalAffixesEnabled) {
         for (const item of virtualItems) {
@@ -613,16 +646,34 @@ export default function TopGearPage() {
   useEffect(() => {
     const requestSeq = ++comboRequestSeqRef.current;
     const selectedItemsForSubmit = buildSelectedUidsJson();
+    const hasRawGearSelection = Object.values(selectedUids).some((uids) => uids.size > 0);
     const hasGearSelection = Object.values(selectedItemsForSubmit).some((uids) => uids.length > 0);
     const hasTalentCompare = talentBuilds.length > 1;
-    if (!resolved || (!hasGearSelection && !hasTalentCompare)) {
+    if (!resolved || (!hasRawGearSelection && !hasTalentCompare)) {
       setComboCount(0);
+      setComboComputing(false);
+      setComboCountComputed(false);
+      setComboLimitReached(false);
+      setComboError('');
+      return;
+    }
+    // Keep the previous value while a selection is being normalized against a
+    // freshly resolved item list instead of flashing back to zero.
+    if (!hasGearSelection && !hasTalentCompare) {
+      setComboComputing(true);
+      setComboCountComputed(false);
+      setComboLimitReached(false);
       setComboError('');
       return;
     }
 
+    setComboComputing(true);
+    setComboCountComputed(false);
+    setComboLimitReached(false);
+    setComboError('');
+
     const controller = new AbortController();
-    (async () => {
+    const calculateComboCount = async () => {
       try {
         const useMatrix = isMultiConsumablesEnabledNow();
         const storedFlasks = filterMatrixTokens(
@@ -687,23 +738,43 @@ export default function TopGearPage() {
         if (!res.ok) {
           if (requestSeq !== comboRequestSeqRef.current) return;
           setComboCount(0);
+          setComboComputing(false);
+          setComboCountComputed(false);
+          setComboLimitReached(false);
           setComboError('Failed to calculate combinations. Try selecting fewer items.');
           return;
         }
         const data = await res.json();
         if (requestSeq !== comboRequestSeqRef.current) return;
-        setComboCount(data.combo_count ?? 0);
-        setComboError(data.error ?? '');
+        const count = data.combo_count ?? 0;
+        const configuredLimit = maxCombinations ?? 500;
+        const limitReached = data.limit_reached === true || count > configuredLimit;
+        setComboCount(count);
+        setComboComputing(false);
+        setComboCountComputed(true);
+        setComboLimitReached(limitReached);
+        setComboError(
+          limitReached
+            ? `Cannot start a simulation: ${count.toLocaleString()} combinations exceeds the configured limit of ${configuredLimit.toLocaleString()}. Please deselect some items.`
+            : data.error ?? ''
+        );
       } catch (e: unknown) {
         if (e instanceof Error && e.name !== 'AbortError') {
           if (requestSeq !== comboRequestSeqRef.current) return;
           setComboCount(0);
+          setComboComputing(false);
+          setComboCountComputed(false);
+          setComboLimitReached(false);
           setComboError('Failed to calculate combinations. Try selecting fewer items.');
         }
       }
-    })();
+    };
+    const timer = window.setTimeout(() => {
+      void calculateComboCount();
+    }, 250);
 
     return () => {
+      window.clearTimeout(timer);
       controller.abort();
     };
   }, [
@@ -799,9 +870,24 @@ export default function TopGearPage() {
 
   const validate = useCallback(() => {
     if (!resolved) return 'No gear resolved';
+    if (comboComputing || !comboCountComputed) {
+      return comboError || 'Combination count is still being computed. Please wait.';
+    }
+    if (comboLimitReached) {
+      return comboError || 'Cannot start a simulation: the combination count exceeds the configured limit.';
+    }
+    if (comboCount === 0) return 'No valid combinations found.';
     if (pageLevelError) return pageLevelError;
     return null;
-  }, [resolved, pageLevelError]);
+  }, [
+    resolved,
+    pageLevelError,
+    comboComputing,
+    comboCountComputed,
+    comboLimitReached,
+    comboError,
+    comboCount,
+  ]);
 
   const { submit, submitting, error, buttonLabel } = useSimSubmit({
     endpoint: '/api/top-gear/sim',
@@ -832,11 +918,18 @@ export default function TopGearPage() {
     },
   });
 
-  const handleSubmit = useCallback(() => {
-    void submit();
+  const handleSubmit = useCallback((threadsOverride?: number) => {
+    void submit({ threadsOverride });
   }, [submit]);
   const hasSimcInput = simcInput.trim().length >= 10;
-  const submitDisabled = submitting || !!pageLevelError || !resolved;
+  const submitDisabled =
+    submitting ||
+    !!pageLevelError ||
+    !resolved ||
+    comboComputing ||
+    !comboCountComputed ||
+    comboLimitReached ||
+    comboCount === 0;
 
   return (
     <div className="mobile-page-bottom space-y-6 pb-28">
@@ -949,6 +1042,8 @@ export default function TopGearPage() {
             copyEnchants={copyEnchants}
             specName={resolved.character.spec}
             comboCount={comboCount}
+            comboComputing={comboComputing}
+            comboLimitReached={comboLimitReached}
             comboError={comboError}
           />
         ) : (
@@ -970,17 +1065,17 @@ export default function TopGearPage() {
           }}
         >
           <div className="pointer-events-auto bg-gradient-to-t from-[#111] via-[#111] to-transparent pt-6">
-            <button
-              onClick={handleSubmit}
-              data-tour="top-gear-submit"
+            <SimulationLaunchButton
+              onSubmit={handleSubmit}
+              dataTour="top-gear-submit"
               disabled={submitDisabled}
-              className="btn-primary flex w-full items-center justify-center gap-2 py-3 text-sm"
+              submitting={submitting}
             >
               {submitting ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
-              Starting sim…
-            </>
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
+                  Starting sim…
+                </>
               ) : resolving ? (
                 'Resolving gear...'
               ) : hasSimcInput ? (
@@ -988,7 +1083,7 @@ export default function TopGearPage() {
               ) : (
                 'Find Top Gear'
               )}
-            </button>
+            </SimulationLaunchButton>
           </div>
         </div>
       </div>

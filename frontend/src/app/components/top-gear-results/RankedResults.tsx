@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ResultItem, TopGearResult } from '../../lib/types';
 import type { EnchantInfo, GemInfo, ItemInfo } from '../../lib/useItemInfo';
 import type { Instance } from '../../drop-finder/types';
@@ -6,9 +6,9 @@ import type { Instance } from '../../drop-finder/types';
 import RankingsHeader from './RankingsHeader';
 import ResultRow from './ResultRow';
 
-const INITIAL_VISIBLE = 8;
+const PAGE_SIZE = 10;
 
-interface RankedResultsProps {
+export interface ResultListProps {
   results: TopGearResult[];
   maxDps: number;
   baseDps: number;
@@ -30,9 +30,12 @@ interface RankedResultsProps {
   isResultWishlisted?: (result: TopGearResult) => boolean;
   sourceInstances?: Instance[];
   baselineTierBySlot?: Record<string, string>;
+  showHeader?: boolean;
+  showRanks?: boolean;
+  isBestResult?: (result: TopGearResult, index: number) => boolean;
 }
 
-export default function RankedResults({
+export function ResultList({
   results,
   maxDps,
   baseDps,
@@ -51,14 +54,28 @@ export default function RankedResults({
   isResultWishlisted,
   sourceInstances = [],
   baselineTierBySlot = {},
-}: RankedResultsProps) {
-  const [expanded, setExpanded] = useState(false);
-  const visible = expanded ? results : results.slice(0, INITIAL_VISIBLE);
-  const hasMore = results.length > INITIAL_VISIBLE;
+  showHeader = true,
+  showRanks = true,
+  isBestResult,
+}: ResultListProps) {
+  const [page, setPage] = useState(0);
+
+  useEffect(() => {
+    setPage(0);
+  }, [results]);
+
+  const pageCount = Math.max(1, Math.ceil(results.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount - 1);
+  const pageStart = currentPage * PAGE_SIZE;
+  const visible = results.slice(pageStart, pageStart + PAGE_SIZE);
+  const hasPagination = pageCount > 1;
+  const formatCount = (count: number) => count.toLocaleString();
+  const firstVisible = results.length === 0 ? 0 : pageStart + 1;
+  const lastVisible = pageStart + visible.length;
 
   return (
     <div className="space-y-1">
-      <RankingsHeader />
+      {showHeader && <RankingsHeader />}
       {visible.map((result, idx) =>
         (() => {
           const exact = getExactStatsStatus?.(result) || { status: 'idle' as const };
@@ -66,12 +83,16 @@ export default function RankedResults({
             <ResultRow
               key={result.name}
               result={result}
-              rank={idx + 1}
+              rank={showRanks ? pageStart + idx + 1 : undefined}
               maxDps={maxDps}
               baseDps={baseDps}
               equippedGear={equippedGear}
               baseAvgIlevel={baseAvgIlevel}
-              isBest={idx === 0 && result.delta > 0}
+              isBest={
+                isBestResult
+                  ? isBestResult(result, pageStart + idx)
+                  : pageStart + idx === 0 && result.delta > 0
+              }
               isSelected={result.name === (selectedResultName || results[0]?.name)}
               onSelect={() => onSelectResult(result.name)}
               itemInfoMap={itemInfoMap}
@@ -103,16 +124,41 @@ export default function RankedResults({
           );
         })()
       )}
-      {hasMore && (
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="mt-2 w-full rounded-lg border border-border bg-surface-2 py-2.5 text-sm text-zinc-300 transition-all hover:border-zinc-600 hover:text-zinc-100"
-        >
-          {expanded
-            ? 'Show less'
-            : `Show all ${results.length} results (+${results.length - INITIAL_VISIBLE} more)`}
-        </button>
+      {hasPagination && (
+        <div className="border-border bg-surface-2 mt-2 rounded-lg border p-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="px-1 text-xs text-zinc-400">
+              Showing {formatCount(firstVisible)}-{formatCount(lastVisible)} of{' '}
+              {formatCount(results.length)} results
+            </span>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.max(0, current - 1))}
+                disabled={currentPage === 0}
+                className="border-border rounded border px-3 py-1.5 text-sm text-zinc-300 transition-colors hover:border-zinc-600 hover:text-zinc-100"
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))}
+                disabled={currentPage === pageCount - 1}
+                className="border-border rounded border px-3 py-1.5 text-sm text-zinc-300 transition-colors hover:border-zinc-600 hover:text-zinc-100"
+              >
+                Next
+              </button>
+              <span className="flex items-center px-1 text-xs text-zinc-500">
+                Page {formatCount(currentPage + 1)} of {formatCount(pageCount)}
+              </span>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
+}
+
+export default function RankedResults(props: ResultListProps) {
+  return <ResultList {...props} />;
 }

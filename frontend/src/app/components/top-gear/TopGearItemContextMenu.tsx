@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ResolvedItem } from '../../lib/types';
+import { getIconUrl } from '../../lib/useItemInfo';
 import { useDismissOnOutside } from '../../lib/useDismissOnOutside';
 import { isAscendantApplied } from './topGearItemUtils';
+import type { UpgradeCurrency } from './useTopGearState';
 
 interface UpgradeOption {
   bonus_id: number;
@@ -10,6 +12,8 @@ interface UpgradeOption {
   name: string;
   fullName: string;
   itemLevel: number;
+  costs?: Record<string, number>;
+  discounted?: boolean;
 }
 
 interface TopGearItemContextMenuProps {
@@ -22,6 +26,7 @@ interface TopGearItemContextMenuProps {
   otherTierOptions: UpgradeOption[];
   loadingOtherTierOptions: boolean;
   upgradeOptions: UpgradeOption[];
+  upgradeCurrencies: Record<string, UpgradeCurrency>;
   loadingUpgrades: boolean;
   onClose: () => void;
   onLoadUpgradeOptions: (item: ResolvedItem) => Promise<void> | void;
@@ -92,6 +97,7 @@ export default function TopGearItemContextMenu({
   otherTierOptions,
   loadingOtherTierOptions,
   upgradeOptions,
+  upgradeCurrencies,
   loadingUpgrades,
   onClose,
   onLoadUpgradeOptions,
@@ -287,7 +293,7 @@ export default function TopGearItemContextMenu({
     menuPos.top,
     mainWidth,
     itemRow * 1,
-    270,
+    370,
     320
   );
   const enchantPos = getSubmenuPosition(
@@ -404,7 +410,7 @@ export default function TopGearItemContextMenu({
 
       {activeSubmenu === 'upgrade' && (
         <div
-          className="fixed z-[121] min-w-[270px] pointer-events-auto rounded-lg border border-border bg-surface py-1 shadow-2xl"
+          className="fixed z-[121] min-w-[370px] pointer-events-auto rounded-lg border border-border bg-surface py-1 shadow-2xl"
           style={{ left: upgradePos.left, top: upgradePos.top }}
           onContextMenu={(e) => {
             e.preventDefault();
@@ -418,6 +424,7 @@ export default function TopGearItemContextMenu({
           ) : (
             upgradeOptions.map((opt) => {
               const isCurrent = item.bonus_ids.includes(opt.bonus_id);
+              const costEntries = Object.entries(opt.costs || {}).filter(([, amount]) => amount > 0);
               return (
                 <button
                   key={opt.bonus_id}
@@ -436,7 +443,45 @@ export default function TopGearItemContextMenu({
                       : 'text-zinc-200 hover:bg-white/[0.07]'
                   }`}
                 >
-                  <span className="truncate">{opt.fullName}</span>
+                  <span className="min-w-0 flex-1 truncate">{opt.fullName}</span>
+                  {isCurrent ? (
+                    <span className="shrink-0 text-[10px] uppercase tracking-wide text-zinc-500">
+                      Current
+                    </span>
+                  ) : costEntries.length === 0 ? (
+                    <span
+                      className={`shrink-0 text-[10px] uppercase tracking-wide ${
+                        opt.discounted ? 'text-emerald-400' : 'text-zinc-500'
+                      }`}
+                    >
+                      {opt.discounted ? 'Free · discounted' : 'Cost unavailable'}
+                    </span>
+                  ) : (
+                    <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-gold/80">
+                      {costEntries.map(([currencyId, amount]) => {
+                        const currency = upgradeCurrencies[currencyId];
+                        return (
+                          <span
+                            key={currencyId}
+                            className="flex items-center gap-0.5"
+                            title={currency?.name || currencyId}
+                          >
+                            <img
+                              src={getIconUrl(currency?.icon || 'inv_misc_questionmark')}
+                              alt=""
+                              className="h-3.5 w-3.5 rounded-sm opacity-80"
+                            />
+                            <span className="font-mono tabular-nums">{amount}</span>
+                          </span>
+                        );
+                      })}
+                      {opt.discounted && (
+                        <span className="text-[9px] uppercase tracking-wide text-emerald-400">
+                          discounted
+                        </span>
+                      )}
+                    </span>
+                  )}
                   <span className="shrink-0 font-mono text-[12px] tabular-nums">{opt.itemLevel}</span>
                 </button>
               );

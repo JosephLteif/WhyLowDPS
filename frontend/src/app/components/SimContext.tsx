@@ -9,6 +9,12 @@ import {
   getCharacterDefaultsKeyFromSimcInput,
   setLastActiveCharacterDefaultsKey,
 } from '../lib/default-options';
+import {
+  clampSimIdleTimeoutSeconds,
+  clampSimTimeoutSeconds,
+  DEFAULT_SIM_IDLE_TIMEOUT_SECONDS,
+  DEFAULT_SIM_TIMEOUT_SECONDS,
+} from '../lib/sim-timeout';
 import { parseCharacterInfo } from '@/lib/simc-parser';
 import { useActiveCharacter } from './ActiveCharacterContext';
 
@@ -19,6 +25,10 @@ interface SimContextType {
   setFightStyle: (v: string) => void;
   threads: number;
   setThreads: (v: number) => void;
+  simTimeoutSeconds: number;
+  setSimTimeoutSeconds: (v: number) => void;
+  simIdleTimeoutSeconds: number;
+  setSimIdleTimeoutSeconds: (v: number) => void;
   maxCombinations: number | undefined;
   setMaxCombinations: (v: number | undefined) => void;
   selectedTalent: string;
@@ -139,6 +149,10 @@ export function SimProvider({ children }: { children: ReactNode }) {
   const [simcInput, _setSimcInput] = useState('');
   const [fightStyle, _setFightStyle] = useState('Patchwerk');
   const [threads, _setThreads] = useState(0);
+  const [simTimeoutSeconds, _setSimTimeoutSeconds] = useState(DEFAULT_SIM_TIMEOUT_SECONDS);
+  const [simIdleTimeoutSeconds, _setSimIdleTimeoutSeconds] = useState(
+    DEFAULT_SIM_IDLE_TIMEOUT_SECONDS
+  );
   const [maxCombinations, _setMaxCombinations] = useState<number | undefined>(undefined);
   const [selectedTalent, setSelectedTalent] = useState('');
   const [targetCount, _setTargetCount] = useState(1);
@@ -273,6 +287,16 @@ export function SimProvider({ children }: { children: ReactNode }) {
         )
       );
       _setThreads(readStored('whylowdps_threads', 0));
+      _setSimTimeoutSeconds(
+        clampSimTimeoutSeconds(
+          readStored('whylowdps_sim_timeout_seconds', DEFAULT_SIM_TIMEOUT_SECONDS)
+        )
+      );
+      _setSimIdleTimeoutSeconds(
+        clampSimIdleTimeoutSeconds(
+          readStored('whylowdps_sim_idle_timeout_seconds', DEFAULT_SIM_IDLE_TIMEOUT_SECONDS)
+        )
+      );
       _setMaxCombinations(readStoredOptionalNumber('whylowdps_max_combinations'));
       _setTargetCount(
         readStored(
@@ -435,6 +459,22 @@ export function SimProvider({ children }: { children: ReactNode }) {
     _setThreads(v);
     try {
       localStorage.setItem('whylowdps_threads', String(v));
+    } catch {}
+  }, []);
+
+  const setSimTimeoutSeconds = useCallback((v: number) => {
+    const next = clampSimTimeoutSeconds(v);
+    _setSimTimeoutSeconds(next);
+    try {
+      localStorage.setItem('whylowdps_sim_timeout_seconds', String(next));
+    } catch {}
+  }, []);
+
+  const setSimIdleTimeoutSeconds = useCallback((v: number) => {
+    const next = clampSimIdleTimeoutSeconds(v);
+    _setSimIdleTimeoutSeconds(next);
+    try {
+      localStorage.setItem('whylowdps_sim_idle_timeout_seconds', String(next));
     } catch {}
   }, []);
 
@@ -734,6 +774,10 @@ export function SimProvider({ children }: { children: ReactNode }) {
         setFightStyle,
         threads,
         setThreads,
+        simTimeoutSeconds,
+        setSimTimeoutSeconds,
+        simIdleTimeoutSeconds,
+        setSimIdleTimeoutSeconds,
         maxCombinations,
         setMaxCombinations,
         selectedTalent,

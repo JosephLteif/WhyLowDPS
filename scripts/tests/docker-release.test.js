@@ -59,15 +59,36 @@ test('release workflow has a compact stable action selector', () => {
 
   assert.match(workflow, /release_action:[\s\S]*?- patch[\s\S]*?- promote-dev/);
   assert.doesNotMatch(workflow, /release_channel|release_mode|dev_source_ref|source_ref:/);
-  assert.match(workflow, /promote-dev:[\s\S]*ref: refs\/tags\/dev[\s\S]*git tag "v\$\{VERSION\}"/);
+  assert.match(workflow, /dev_version:[\s\S]*?type: string/);
+  assert.match(workflow, /promote-dev:[\s\S]*?DEV_TAG="dev-build\/\$\{DEV_VERSION\}"/);
+  assert.match(workflow, /git checkout --detach "refs\/tags\/\$\{DEV_TAG\}"/);
+  assert.match(workflow, /echo "dev_sha=\$\{DEV_SHA\}" >> "\$GITHUB_OUTPUT"/);
+  assert.match(workflow, /promote-dev:[\s\S]*?persist-credentials: false/);
+  assert.match(workflow, /promote-dev:[\s\S]*?git checkout --detach origin\/master/);
+  assert.match(workflow, /promote-dev:[\s\S]*?\:\(exclude\)\.github\/workflows\/\*\*/);
+  assert.match(workflow, /git tag "v\$\{VERSION\}"/);
+  assert.match(workflow, /promote-dev:[\s\S]*?git config user\.name "github-actions\[bot\]"[\s\S]*?git commit -m "chore\(release\): promote/);
+  assert.doesNotMatch(workflow, /ref: refs\/tags\/dev\s/);
   assert.match(workflow, /needs: \[bump-version-stable, promote-dev, validate_republish\]/);
 });
 
-test('dev release workflow is automatic and input-free', () => {
+test('dev release workflow is manual-only with selectable increments', () => {
   const workflow = readRepositoryFile('.github/workflows/dev-release.yml');
 
-  assert.match(workflow, /branches:[\s\S]*?- dev/);
-  assert.match(workflow, /workflow_dispatch:/);
+  assert.doesNotMatch(workflow, /^  push:/m);
+  assert.match(
+    workflow,
+    /workflow_dispatch:[\s\S]*?dev_increment:[\s\S]*?type: choice[\s\S]*?- patch[\s\S]*?- minor[\s\S]*?- major/
+  );
+  assert.match(
+    workflow,
+    /DEV_INCREMENT: \$\{\{ inputs\.dev_increment \}\}/
+  );
+  assert.match(workflow, /switch \(\$env:DEV_INCREMENT\)/);
+  assert.match(workflow, /git ls-remote --exit-code origin "refs\/tags\/v\$targetVersion"/);
+  assert.match(workflow, /Preserve immutable developer source tag/);
+  assert.match(workflow, /git push origin "refs\/tags\/\$devTag"/);
+  assert.match(workflow, /Source ref: dev-build\/\$env:DEV_VERSION/);
   assert.match(workflow, /tagName: dev/);
   assert.match(workflow, /releases\/download\/dev\/latest\.json/);
   assert.match(workflow, /latest\.json/);

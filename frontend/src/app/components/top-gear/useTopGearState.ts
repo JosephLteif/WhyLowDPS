@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { API_URL } from '../../lib/api';
 import { buildResolvedItemIdentity } from '../../lib/gear-utils';
 import type { ResolvedItem, ResolveGearResponse } from '../../lib/types';
+import { getUpgradeDiscountIlevel } from './topGearItemUtils';
 
 interface UpgradeOption {
   bonus_id: number;
@@ -10,6 +11,14 @@ interface UpgradeOption {
   name: string;
   fullName: string;
   itemLevel: number;
+  costs: Record<string, number>;
+  discounted: boolean;
+}
+
+export interface UpgradeCurrency {
+  id: number;
+  name: string;
+  icon: string;
 }
 
 interface UpgradeOptionApi {
@@ -21,6 +30,9 @@ interface UpgradeOptionApi {
   fullName?: string;
   itemLevel?: number;
   ilevel?: number;
+  costs?: Record<string, number>;
+  cumulative_costs?: Record<string, number>;
+  discounted?: boolean;
 }
 
 interface TopGearStateProps {
@@ -38,6 +50,7 @@ export function useTopGearState({
 }: TopGearStateProps) {
   const [upgradeMenuFor, setUpgradeMenuFor] = useState<string | null>(null);
   const [upgradeOptions, setUpgradeOptions] = useState<UpgradeOption[]>([]);
+  const [upgradeCurrencies, setUpgradeCurrencies] = useState<Record<string, UpgradeCurrency>>({});
   const [loadingUpgrades, setLoadingUpgrades] = useState(false);
   const [hasUpgradePathByUid, setHasUpgradePathByUid] = useState<Record<string, boolean>>({});
   const [isAddItemOpen, setAddItemOpen] = useState(false);
@@ -53,6 +66,13 @@ export function useTopGearState({
     const max = Number(opt.max ?? opt.max_level ?? 0);
     const itemLevel = Number(opt.itemLevel ?? opt.ilevel ?? 0);
     const fullName = String(opt.fullName || opt.name || '').trim();
+    const rawCosts = opt.costs ?? opt.cumulative_costs ?? {};
+    const costs = Object.fromEntries(
+      Object.entries(rawCosts).flatMap(([currencyId, amount]) => {
+        const parsed = Number(amount);
+        return Number.isFinite(parsed) && parsed > 0 ? [[currencyId, parsed]] : [];
+      })
+    );
 
     return {
       bonus_id: bonusId,
@@ -61,6 +81,8 @@ export function useTopGearState({
       name: String(opt.name || fullName || '').trim(),
       fullName,
       itemLevel: Number.isFinite(itemLevel) ? itemLevel : 0,
+      costs,
+      discounted: opt.discounted === true,
     };
   }, []);
 
@@ -68,8 +90,11 @@ export function useTopGearState({
     async (item: ResolvedItem) => {
       setLoadingUpgrades(true);
       try {
+        const params = new URLSearchParams({ bonus_ids: item.bonus_ids.join(',') });
+        const discountIlevel = getUpgradeDiscountIlevel(item, resolved);
+        if (discountIlevel > 0) params.set('discount_ilevel', String(discountIlevel));
         const res = await fetch(
-          `${API_URL}/api/upgrade-options?bonus_ids=${item.bonus_ids.join(',')}`,
+          `${API_URL}/api/upgrade-options?${params.toString()}`,
           { credentials: 'include' }
         );
         const data = await res.json();
@@ -78,12 +103,16 @@ export function useTopGearState({
           .map(normalizeUpgradeOption)
           .filter((opt): opt is UpgradeOption => opt !== null);
         setUpgradeOptions(normalizedOptions);
+        setUpgradeCurrencies(
+          data?.currencies && typeof data.currencies === 'object' ? data.currencies : {}
+        );
         setHasUpgradePathByUid((prev) => ({
           ...prev,
           [item.uid]: normalizedOptions.length > 0,
         }));
       } catch {
         setUpgradeOptions([]);
+        setUpgradeCurrencies({});
         setHasUpgradePathByUid((prev) => ({
           ...prev,
           [item.uid]: false,
@@ -91,7 +120,7 @@ export function useTopGearState({
       }
       setLoadingUpgrades(false);
     },
-    [normalizeUpgradeOption]
+    [normalizeUpgradeOption, resolved]
   );
 
   const openAddItem = useCallback((slot?: string) => {
@@ -233,6 +262,7 @@ export function useTopGearState({
     upgradeMenuFor,
     setUpgradeMenuFor,
     upgradeOptions,
+    upgradeCurrencies,
     loadingUpgrades,
     hasUpgradePathByUid,
     isAddItemOpen,

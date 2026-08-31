@@ -20,6 +20,11 @@ import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import type { Instance } from '../drop-finder/types';
 import { buildSourceTagLinks } from '../lib/source-navigation';
 import { getItemExtraEffects, useItemExtraEffects } from '../lib/itemExtraEffect';
+import {
+  formatUpgradePreviewLabel,
+  labelsEqual,
+  normalizeUpgradeLabel,
+} from '../lib/upgrade-preview';
 import GearItemRow from './GearItemRow';
 import { ASCENDANT_VOIDCORE_BADGE_CLASS, EMBELLISHMENT_BADGE_CLASS } from './shared/itemBadgeClasses';
 
@@ -107,92 +112,6 @@ function normalizeEmbellishmentName(value?: string | null): string {
     .replace(/\s*\((quality|rank|q)\s*\d+\)\s*$/i, '')
     .replace(/\s*\(\d+\)\s*$/i, '')
     .replace(/[^a-z0-9]/g, '');
-}
-
-function normalizeUpgradeLabel(value?: string | null): string {
-  return String(value || '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function labelsEqual(left?: string | null, right?: string | null): boolean {
-  return String(left || '').trim().toLowerCase() === String(right || '').trim().toLowerCase();
-}
-
-function collapseUpgradeLabelPath(
-  upgradeLabel: string,
-  equippedUpgradeLabel?: string | null
-): string {
-  const segments = upgradeLabel
-    .split('->')
-    .map((segment) => segment.trim())
-    .filter(Boolean);
-  const target = segments[segments.length - 1] || '';
-  const equipped = normalizeUpgradeLabel(equippedUpgradeLabel);
-
-  if (!target && !equipped) return '';
-  if (!equipped) {
-    if (segments.length > 1) {
-      const previous = segments[segments.length - 2] || '';
-      return labelsEqual(previous, target) ? target : `${previous} -> ${target}`;
-    }
-    return target;
-  }
-  if (!target) return equipped;
-  return labelsEqual(equipped, target) ? target : `${equipped} -> ${target}`;
-}
-
-function parseTrackLevel(label: string): { track: string; level: number; max: number } | null {
-  const match = label.match(/\b([A-Za-z]+)\s+(\d+)\s*\/\s*(\d+)\b/);
-  if (!match) return null;
-  return {
-    track: match[1],
-    level: Number(match[2]),
-    max: Number(match[3]),
-  };
-}
-
-function formatUpgradePreviewLabel({
-  upgradeLabel,
-  equippedUpgradeLabel,
-  itemIlevel,
-  equippedIlevel,
-  upgradeLevels,
-  sourceType,
-}: {
-  upgradeLabel: string;
-  equippedUpgradeLabel?: string | null;
-  itemIlevel: number;
-  equippedIlevel: number;
-  upgradeLevels?: number;
-  sourceType?: string | null;
-}): string {
-  const collapsed = collapseUpgradeLabelPath(upgradeLabel, equippedUpgradeLabel);
-  if (collapsed.includes('->')) return collapsed;
-  if (equippedIlevel <= 0 || itemIlevel <= 0 || equippedIlevel === itemIlevel) return collapsed;
-
-  const target = parseTrackLevel(collapsed);
-  if (!target) return collapsed;
-
-  const levels = Number(upgradeLevels || 0);
-  if (levels > 0 && target.level > levels) {
-    return `${target.track} ${target.level - levels}/${target.max} -> ${target.track} ${target.level}/${target.max}`;
-  }
-
-  const ascendantDelta = /(?:^|\s)mod:268552(?:\s|$)|ascendant_voidcore/i.test(String(sourceType || ''))
-    ? 9
-    : 0;
-  const targetBaseIlevel = Math.max(equippedIlevel, itemIlevel - ascendantDelta);
-  const ilevelDelta = targetBaseIlevel - equippedIlevel;
-  const inferredLevelDelta = Math.min(
-    target.level - 1,
-    Math.max(1, Math.round(ilevelDelta / 3.5))
-  );
-  const previousLevel = target.level - inferredLevelDelta;
-
-  return previousLevel > 0 && previousLevel !== target.level
-    ? `${target.track} ${previousLevel}/${target.max} -> ${target.track} ${target.level}/${target.max}`
-    : collapsed;
 }
 
 function upgradeTierClass(label: string): string {

@@ -152,6 +152,8 @@ impl JobStorage for MemoryStorage {
 
     fn update_status(&self, id: &str, status: JobStatus) {
         if let Some(job) = self.jobs.lock().unwrap().get_mut(id) {
+            let from = job.status.clone();
+            job.transition_stage_timing(&from, &status);
             job.status = status;
         }
     }
@@ -164,26 +166,29 @@ impl JobStorage for MemoryStorage {
         if job.status != from {
             return false;
         }
+        job.transition_stage_timing(&from, &to);
         job.status = to;
         true
     }
 
     fn update_progress(&self, id: &str, pct: u8, stage: &str, detail: &str) {
         if let Some(job) = self.jobs.lock().unwrap().get_mut(id) {
+            job.update_stage_timing(stage);
             job.progress_pct = pct;
-            job.progress_stage = Some(stage.to_string());
             job.progress_detail = Some(detail.to_string());
         }
     }
 
     fn complete_stage(&self, id: &str, summary: &str) {
         if let Some(job) = self.jobs.lock().unwrap().get_mut(id) {
+            job.complete_stage_timing();
             job.stages_completed.push(summary.to_string());
         }
     }
 
     fn set_result(&self, id: &str, result: String, raw_json: Option<String>) {
         if let Some(job) = self.jobs.lock().unwrap().get_mut(id) {
+            job.complete_stage_timing();
             job.result_json = Some(result);
             job.raw_json = raw_json;
             job.status = JobStatus::Done;
@@ -192,6 +197,7 @@ impl JobStorage for MemoryStorage {
 
     fn set_error(&self, id: &str, error: String) {
         if let Some(job) = self.jobs.lock().unwrap().get_mut(id) {
+            job.complete_stage_timing();
             job.error_message = Some(error);
             job.status = JobStatus::Failed;
         }
@@ -507,6 +513,9 @@ mod tests {
             progress_stage: None,
             progress_detail: None,
             stages_completed: Vec::new(),
+            stage_timings: Vec::new(),
+            active_stage_elapsed: 0.0,
+            active_stage_started_at: None,
             iterations: 10000,
             fight_style: "Patchwerk".to_string(),
             target_error: 0.1,
@@ -638,6 +647,8 @@ mod tests {
         assert_eq!(job.progress_stage.as_deref(), Some("simulating"));
         assert_eq!(job.progress_detail.as_deref(), Some("stage-2"));
         assert_eq!(job.stages_completed, vec!["parsed profile".to_string()]);
+        assert_eq!(job.stage_timings.len(), 1);
+        assert_eq!(job.stage_timings[0].name, "simulating");
         assert_eq!(job.raw_json.as_deref(), Some(r#"{"raw":"ok"}"#));
         assert_eq!(job.html_report.as_deref(), Some("<html>report</html>"));
         assert_eq!(job.text_output.as_deref(), Some("text output"));

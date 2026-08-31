@@ -36,6 +36,7 @@ Thumbs.db
 backend/resources/data/*
 backend/resources/simc/
 backend/resources/frontend/
+backend/simc-runtime/
 !backend/resources/data/.gitkeep
 !backend/resources/simc/.gitkeep
 desktop/resources/

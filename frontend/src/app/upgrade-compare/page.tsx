@@ -5,6 +5,7 @@ import { Loader2 } from 'lucide-react';
 import ErrorAlert from '../components/ErrorAlert';
 import ComboSummary from '../components/ComboSummary';
 import GearItemRow from '../components/GearItemRow';
+import SimulationLaunchButton from '../components/SimulationLaunchButton';
 import StickyPageHeader from '../components/StickyPageHeader';
 import { useSimContext } from '../components/SimContext';
 import SimReturnNotice from '../components/shared/SimReturnNotice';
@@ -36,6 +37,8 @@ interface PrepareCandidate {
   ilevel: number;
   target_ilevel: number;
   costs: Record<string, number>;
+  currency_id?: number | null;
+  discounted?: boolean;
   is_equipped: boolean;
 }
 
@@ -64,10 +67,13 @@ function getCurrencyIconUrl(iconName: string): string {
 
 function formatCosts(
   costs: Record<string, number>,
-  currencies: Record<string, CurrencyMeta>
+  currencies: Record<string, CurrencyMeta>,
+  discounted: boolean
 ): string {
-  const entries = Object.entries(costs).sort((a, b) => Number(a[0]) - Number(b[0]));
-  if (entries.length === 0) return 'no cost';
+  const entries = Object.entries(costs)
+    .filter(([, amount]) => amount > 0)
+    .sort((a, b) => Number(a[0]) - Number(b[0]));
+  if (entries.length === 0) return discounted ? 'Free (discounted)' : 'Cost unavailable';
   return entries
     .map(([cid, amount]) => {
       const name = currencies[cid]?.name;
@@ -125,12 +131,17 @@ export default function UpgradeComparePage() {
   const { data, loading } = useUpgradeData(simcInput);
   const [selectedSlots, setSelectedSlots] = useState<Set<string>>(new Set());
   const [comboCount, setComboCount] = useState(0);
+  const [comboComputing, setComboComputing] = useState(false);
+  const [comboCountComputed, setComboCountComputed] = useState(false);
+  const [comboLimitReached, setComboLimitReached] = useState(false);
+  const [comboError, setComboError] = useState('');
   const [upgradeMode, setUpgradeMode] = useState<
     'highest_affordable' | 'all_affordable' | 'highest_any' | 'all_any'
   >('highest_affordable');
   const [budgetOverride, setBudgetOverride] = useState<Record<string, string>>({});
   const [returnNotice, setReturnNotice] = useState<SimReturnNoticeType | null>(null);
   const skipNextDataResetRef = useRef(false);
+  const effectiveMaxCombinations = maxCombinations ?? 500;
 
   useEffect(() => {
     const restored = consumeSimAgainState<UpgradeCompareSimAgainState>(
@@ -192,6 +203,10 @@ export default function UpgradeComparePage() {
     }
     setSelectedSlots(new Set());
     setComboCount(0);
+    setComboComputing(false);
+    setComboCountComputed(false);
+    setComboLimitReached(false);
+    setComboError('');
     setBudgetOverride({});
   }, [data]);
 
@@ -204,13 +219,24 @@ export default function UpgradeComparePage() {
 
   // Debounced combo count
   const comboTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const comboRequestSeqRef = useRef(0);
   useEffect(() => {
+    const requestSeq = ++comboRequestSeqRef.current;
     if (selectedSlots.size === 0 || !simcInput.trim()) {
       setComboCount(0);
+      setComboComputing(false);
+      setComboCountComputed(false);
+      setComboLimitReached(false);
+      setComboError('');
       return;
     }
 
     if (comboTimer.current) clearTimeout(comboTimer.current);
+    const controller = new AbortController();
+    setComboComputing(true);
+    setComboCountComputed(false);
+    setComboLimitReached(false);
+    setComboError('');
     comboTimer.current = setTimeout(async () => {
       try {
         const res = await fetch(`${API_URL}/api/upgrade-compare/combo-count`, {
@@ -229,20 +255,41 @@ export default function UpgradeComparePage() {
                 ? 'ignore_budget'
                 : 'max_affordability',
             upgrade_budget_override: budgetOverridePayload,
-            max_combinations: maxCombinations,
+            ...(maxCombinations != null ? { max_combinations: maxCombinations } : {}),
           }),
+          signal: controller.signal,
         });
         const result = await res.json();
-        setComboCount(result.combo_count ?? 0);
-      } catch {
+        if (requestSeq !== comboRequestSeqRef.current) return;
+        const count = result.combo_count ?? 0;
+        const displayCount = count + 1;
+        const limitReached =
+          result.limit_reached === true || displayCount > effectiveMaxCombinations;
+        setComboCount(count);
+        setComboComputing(false);
+        setComboCountComputed(true);
+        setComboLimitReached(limitReached);
+        setComboError(
+          limitReached
+            ? `Cannot start a simulation: ${displayCount.toLocaleString()} combinations exceeds the configured limit of ${effectiveMaxCombinations.toLocaleString()}. Please deselect some items.`
+            : result.error ?? ''
+        );
+      } catch (error: unknown) {
+        if (error instanceof Error && error.name === 'AbortError') return;
+        if (requestSeq !== comboRequestSeqRef.current) return;
         setComboCount(0);
+        setComboComputing(false);
+        setComboCountComputed(false);
+        setComboLimitReached(false);
+        setComboError('Failed to calculate combinations. Try again.');
       }
     }, 300);
 
     return () => {
       if (comboTimer.current) clearTimeout(comboTimer.current);
+      controller.abort();
     };
-  }, [simcInput, selectedSlots, maxCombinations, upgradeMode, budgetOverridePayload]);
+  }, [simcInput, selectedSlots, effectiveMaxCombinations, upgradeMode, budgetOverridePayload]);
 
   // Sim submission
   const buildPayload = useCallback(() => {
@@ -265,11 +312,26 @@ export default function UpgradeComparePage() {
 
   const validate = useCallback(() => {
     if (selectedSlots.size === 0) return 'Select at least one upgradeable item.';
+    if (comboComputing || !comboCountComputed) {
+      return comboError || 'Combination count is still being computed. Please wait.';
+    }
+    if (comboLimitReached) {
+      return comboError || 'Cannot start a simulation: the combination count exceeds the configured limit.';
+    }
+    if (comboCount === 0) return 'No valid upgrade combinations found.';
+    if (comboError) return comboError;
     return null;
-  }, [selectedSlots]);
+  }, [
+    selectedSlots,
+    comboComputing,
+    comboCountComputed,
+    comboLimitReached,
+    comboError,
+    comboCount,
+  ]);
 
   const {
-    submit: handleSubmit,
+    submit,
     submitting,
     error,
     buttonLabel,
@@ -287,6 +349,10 @@ export default function UpgradeComparePage() {
     },
   });
 
+  const handleSubmit = useCallback((threadsOverride?: number) => {
+    void submit({ threadsOverride });
+  }, [submit]);
+
   // Group candidates by primary upgrade currency
   const candidateGroups = useMemo(() => {
     // Find which currencies are actually upgrade currencies (have cost data on candidates)
@@ -299,7 +365,7 @@ export default function UpgradeComparePage() {
 
     const groups = new Map<number, PrepareCandidate[]>();
     for (const c of candidates) {
-      const cid = Object.keys(c.costs)
+      const cid = c.currency_id ?? Object.keys(c.costs)
         .map(Number)
         .find((id) => upgradeCurrencyIds.has(id));
       if (!cid) continue;
@@ -317,7 +383,12 @@ export default function UpgradeComparePage() {
   }, [candidates, currencies]);
 
   const hasCharacter = simcInput.trim().length >= 10;
-  const displayComboCount = selectedSlots.size > 0 ? comboCount + 1 : 0;
+  const displayComboCount =
+    selectedSlots.size > 0
+      ? comboLimitReached
+        ? effectiveMaxCombinations
+        : comboCount + 1
+      : 0;
   const modeLabel =
     upgradeMode === 'highest_affordable'
       ? 'Highest Affordable'
@@ -372,7 +443,11 @@ export default function UpgradeComparePage() {
     ? 'No upgrade currencies found'
     : selectedSlots.size === 0
       ? 'Select items to upgrade'
-      : buttonLabel(`Sim Upgrades (${displayComboCount} combos, ${modeLabel})`);
+      : buttonLabel(
+          comboComputing
+            ? `Sim Upgrades (computing combinations, ${modeLabel})`
+            : `Sim Upgrades (${displayComboCount} combos, ${modeLabel})`
+        );
 
   return (
     <div className="mobile-page-bottom space-y-6 pb-28">
@@ -549,9 +624,11 @@ export default function UpgradeComparePage() {
           right={
             <ComboSummary
               comboCount={displayComboCount}
-              maxCombinations={maxCombinations ?? undefined}
+              maxCombinations={effectiveMaxCombinations}
+              isComputing={comboComputing}
+              limitReached={comboLimitReached}
               breakdown={
-                comboCount !== 0
+                !comboComputing && !comboLimitReached && comboCount !== 0
                   ? `${comboCount.toLocaleString()} normal combos | +1 Currently Equipped`
                   : null
               }
@@ -616,7 +693,7 @@ export default function UpgradeComparePage() {
                             },
                             { text: `${c.ilevel} -> ${c.target_ilevel}` },
                             {
-                              text: formatCosts(c.costs, effectiveCurrencies),
+                              text: formatCosts(c.costs, effectiveCurrencies, c.discounted === true),
                               color: 'text-gold/70',
                             },
                           ]}
@@ -640,14 +717,21 @@ export default function UpgradeComparePage() {
         )}
       </div>
 
-      <ErrorAlert message={error} />
+      <ErrorAlert message={comboError || error} />
 
       <div className="mobile-safe-bottom sticky bottom-0 z-50 -mx-4 bg-gradient-to-t from-[#111] via-[#111] to-transparent px-4 pb-4 pt-6">
-        <button
-          onClick={handleSubmit}
-          data-tour="upgrade-submit"
-          disabled={submitting || selectedSlots.size === 0 || !hasCurrencies}
-          className="btn-primary flex w-full items-center justify-center gap-2 py-3 text-sm"
+        <SimulationLaunchButton
+          onSubmit={handleSubmit}
+          dataTour="upgrade-submit"
+          submitting={submitting}
+          disabled={
+            selectedSlots.size === 0 ||
+            !hasCurrencies ||
+            comboComputing ||
+            !comboCountComputed ||
+            comboLimitReached ||
+            comboCount === 0
+          }
         >
           {submitting ? (
             <>
@@ -657,7 +741,7 @@ export default function UpgradeComparePage() {
           ) : (
             submitLabel
           )}
-        </button>
+        </SimulationLaunchButton>
       </div>
     </div>
   );

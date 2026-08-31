@@ -37,12 +37,17 @@ import { useDataCacheRefresh } from './useDataCacheRefresh';
 import { useDataFileStateManager } from './useDataFileStateManager';
 import { useSettingsUpdater } from './useSettingsUpdater';
 import { fetchReadiness, type ReadinessSnapshot } from '../lib/readiness';
-
-const PRESETS = [
-  { label: 'Balanced', pct: 0.3 },
-  { label: 'Performance', pct: 0.6 },
-  { label: 'Maximum', pct: 0.9 },
-] as const;
+import { SIMULATION_PERFORMANCE_PRESETS, getPresetThreads } from '../lib/sim-performance';
+import {
+  clampSimIdleTimeoutSeconds,
+  clampSimTimeoutSeconds,
+  DEFAULT_SIM_IDLE_TIMEOUT_SECONDS,
+  DEFAULT_SIM_TIMEOUT_SECONDS,
+  MAX_SIM_IDLE_TIMEOUT_SECONDS,
+  MAX_SIM_TIMEOUT_SECONDS,
+  MIN_SIM_IDLE_TIMEOUT_SECONDS,
+  MIN_SIM_TIMEOUT_SECONDS,
+} from '../lib/sim-timeout';
 
 type CloseBehaviorPreferenceResponse = {
   minimize_to_tray_on_close?: boolean | null;
@@ -73,7 +78,15 @@ type LanDevice = {
   active: boolean;
 };
 
-type SettingsTab = 'health' | 'simulation' | 'integrations' | 'data' | 'updates' | 'about';
+type SettingsTab =
+  | 'health'
+  | 'simulation'
+  | 'defaults'
+  | 'application'
+  | 'integrations'
+  | 'data'
+  | 'updates'
+  | 'about';
 
 function formatLanDeviceDate(timestamp?: number | null): string {
   if (!timestamp) return 'Never';
@@ -89,6 +102,10 @@ export default function SettingsPage() {
   const {
     threads,
     setThreads,
+    simTimeoutSeconds,
+    setSimTimeoutSeconds,
+    simIdleTimeoutSeconds,
+    setSimIdleTimeoutSeconds,
     maxCombinations,
     setMaxCombinations,
     autoClipboardPasteSimc,
@@ -253,6 +270,14 @@ export default function SettingsPage() {
         if (Number.isFinite(savedThreads) && savedThreads > 0) {
           setThreads(savedThreads);
         }
+        const savedSimTimeout = parseInt(data.sim_timeout_seconds || '', 10);
+        if (Number.isFinite(savedSimTimeout) && savedSimTimeout > 0) {
+          setSimTimeoutSeconds(clampSimTimeoutSeconds(savedSimTimeout));
+        }
+        const savedSimIdleTimeout = parseInt(data.sim_idle_timeout_seconds || '', 10);
+        if (Number.isFinite(savedSimIdleTimeout) && savedSimIdleTimeout > 0) {
+          setSimIdleTimeoutSeconds(clampSimIdleTimeoutSeconds(savedSimIdleTimeout));
+        }
         const savedMaxCombos = parseInt(data.max_gear_combinations || '', 10);
         if (Number.isFinite(savedMaxCombos) && savedMaxCombos > 0) {
           setMaxCombinations(savedMaxCombos);
@@ -266,7 +291,15 @@ export default function SettingsPage() {
       .finally(() => {
         setPageLoading(false);
       });
-  }, [authLoading, user, router, setMaxCombinations, setThreads]);
+  }, [
+    authLoading,
+    user,
+    router,
+    setMaxCombinations,
+    setSimIdleTimeoutSeconds,
+    setSimTimeoutSeconds,
+    setThreads,
+  ]);
 
   useEffect(() => {
     if (!authLoading && user) void refreshReadiness();
@@ -278,7 +311,16 @@ export default function SettingsPage() {
     ) as SettingsTab | null;
     if (
       requestedTab &&
-      ['health', 'simulation', 'integrations', 'data', 'updates', 'about'].includes(requestedTab)
+      [
+        'health',
+        'simulation',
+        'defaults',
+        'application',
+        'integrations',
+        'data',
+        'updates',
+        'about',
+      ].includes(requestedTab)
     ) {
       setActiveTab(requestedTab);
     }
@@ -325,6 +367,30 @@ export default function SettingsPage() {
       }),
     }).catch(() => {});
   }, [maxCombinations, performanceSaved, user]);
+
+  useEffect(() => {
+    if (!performanceSaved || !user || simTimeoutSeconds <= 0) return;
+    fetchJson(`${API_URL}/api/user/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        key: 'sim_timeout_seconds',
+        value: String(simTimeoutSeconds),
+      }),
+    }).catch(() => {});
+  }, [performanceSaved, simTimeoutSeconds, user]);
+
+  useEffect(() => {
+    if (!performanceSaved || !user || simIdleTimeoutSeconds <= 0) return;
+    fetchJson(`${API_URL}/api/user/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        key: 'sim_idle_timeout_seconds',
+        value: String(simIdleTimeoutSeconds),
+      }),
+    }).catch(() => {});
+  }, [performanceSaved, simIdleTimeoutSeconds, user]);
 
   useEffect(() => {
     if (!isDesktop) return;
@@ -909,8 +975,8 @@ export default function SettingsPage() {
     }
   };
 
-  const activePresetIdx = PRESETS.findIndex(
-    (p) => maxThreads > 0 && Math.max(1, Math.round(maxThreads * p.pct)) === threads
+  const activePresetIdx = SIMULATION_PERFORMANCE_PRESETS.findIndex(
+    (p) => maxThreads > 0 && getPresetThreads(maxThreads, p.pct) === threads
   );
 
   const selectSettingsTab = (tab: SettingsTab) => {
@@ -937,6 +1003,8 @@ export default function SettingsPage() {
         {[
           { id: 'health', label: 'Health' },
           { id: 'simulation', label: 'Simulation' },
+          { id: 'defaults', label: 'Defaults' },
+          { id: 'application', label: 'Application' },
           { id: 'integrations', label: 'Integrations' },
           { id: 'data', label: 'Data Cache' },
           { id: 'updates', label: isHostedPrivate ? 'Docker Updates' : 'App Updates' },
@@ -959,73 +1027,6 @@ export default function SettingsPage() {
         ))}
       </div>
 
-      <section
-        id="settings-panel-overview"
-        aria-labelledby="settings-overview-title"
-        className="rounded-xl border border-border/50 bg-surface/30 p-4 backdrop-blur-sm"
-      >
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 id="settings-overview-title" className="text-sm font-semibold text-zinc-100">
-              Quick repairs
-            </h2>
-            <p className="mt-1 text-xs text-zinc-500">
-              Jump directly to the settings area that needs attention.
-            </p>
-          </div>
-          <span className="text-[11px] text-zinc-600">Use Ctrl K to search these actions</span>
-        </div>
-        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-          {[
-            {
-              tab: 'health' as const,
-              label: 'System health',
-              status: readinessLoading
-                ? 'Checking…'
-                : readiness?.status === 'ready'
-                  ? 'Ready'
-                  : readiness
-                    ? 'Needs attention'
-                    : 'Unavailable',
-            },
-            {
-              tab: 'simulation' as const,
-              label: 'Simulation setup',
-              status: threads > 0 ? 'Ready' : 'Review defaults',
-            },
-            {
-              tab: 'integrations' as const,
-              label: 'Blizzard access',
-              status: isHostedPrivate
-                ? 'Hosted server configuration'
-                : hasSecret || clientId
-                  ? 'Configured'
-                  : 'Needs attention',
-            },
-            { tab: 'data' as const, label: 'Game data and backups', status: 'Refresh or restore' },
-            {
-              tab: 'updates' as const,
-              label: isHostedPrivate ? 'Docker image updates' : 'App and SimC updates',
-              status: isHostedPrivate
-                ? 'Latest and versioned images'
-                : isDesktop
-                  ? 'Desktop controls'
-                  : 'Release notes',
-            },
-          ].map((item) => (
-            <button
-              key={item.tab}
-              type="button"
-              onClick={() => selectSettingsTab(item.tab)}
-              className="rounded-lg border border-border/70 bg-surface-2/60 px-3 py-3 text-left transition-colors hover:border-gold/30 hover:bg-surface-2 focus:outline-none focus:ring-2 focus:ring-gold/40"
-            >
-              <span className="block text-xs font-semibold text-zinc-200">{item.label}</span>
-              <span className="mt-1 block text-[11px] text-zinc-500">{item.status}</span>
-            </button>
-          ))}
-        </div>
-      </section>
-
       {activeTab === 'health' && (
         <ReadinessPanel
           variant="details"
@@ -1042,8 +1043,8 @@ export default function SettingsPage() {
         />
       )}
 
-      {activeTab === 'simulation' && (
-        <div id="settings-panel-simulation">
+      {activeTab === 'defaults' && (
+        <div id="settings-panel-defaults">
           <DefaultOptionsSettingsCard />
         </div>
       )}
@@ -1096,8 +1097,8 @@ export default function SettingsPage() {
                   </span>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
-                  {PRESETS.map((p, i) => {
-                    const val = Math.max(1, Math.round(maxThreads * p.pct));
+                  {SIMULATION_PERFORMANCE_PRESETS.map((p, i) => {
+                    const val = getPresetThreads(maxThreads, p.pct);
                     return (
                       <button
                         key={p.label}
@@ -1135,11 +1136,63 @@ export default function SettingsPage() {
                 className="w-24 rounded border border-border bg-surface-2 px-2 py-1 text-center font-mono text-xs tabular-nums text-white [appearance:textfield] focus:border-gold/50 focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               />
             </div>
+
+            <div className="space-y-3 border-t border-border pt-4">
+              <div>
+                <h3 className="text-sm font-medium text-zinc-300">Simulation timeouts</h3>
+                <p className="mt-1 text-[12px] text-zinc-500">
+                  Total runtime defaults to 2 hours. The no-output timeout stops a run that stops
+                  producing progress.
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="space-y-1.5">
+                  <span className="text-[12px] font-medium text-zinc-400">Total timeout</span>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={MIN_SIM_TIMEOUT_SECONDS / 3600}
+                      max={MAX_SIM_TIMEOUT_SECONDS / 3600}
+                      step={0.25}
+                      value={simTimeoutSeconds / 3600}
+                      onChange={(e) => {
+                        const hours = Number(e.target.value);
+                        if (Number.isFinite(hours)) {
+                          setSimTimeoutSeconds(hours * 3600);
+                        }
+                      }}
+                      className="w-24 rounded border border-border bg-surface-2 px-2 py-1 text-center font-mono text-xs tabular-nums text-white [appearance:textfield] focus:border-gold/50 focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    />
+                    <span className="text-xs text-zinc-500">hours</span>
+                  </div>
+                </label>
+                <label className="space-y-1.5">
+                  <span className="text-[12px] font-medium text-zinc-400">No-output timeout</span>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={MIN_SIM_IDLE_TIMEOUT_SECONDS / 60}
+                      max={MAX_SIM_IDLE_TIMEOUT_SECONDS / 60}
+                      step={1}
+                      value={Math.round(simIdleTimeoutSeconds / 60)}
+                      onChange={(e) => {
+                        const minutes = Number(e.target.value);
+                        if (Number.isFinite(minutes)) {
+                          setSimIdleTimeoutSeconds(minutes * 60);
+                        }
+                      }}
+                      className="w-24 rounded border border-border bg-surface-2 px-2 py-1 text-center font-mono text-xs tabular-nums text-white [appearance:textfield] focus:border-gold/50 focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    />
+                    <span className="text-xs text-zinc-500">minutes</span>
+                  </div>
+                </label>
+              </div>
+            </div>
           </div>
         </section>
       )}
 
-      {activeTab === 'simulation' && (
+      {activeTab === 'application' && (
         <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
           <h2 className="mb-3 text-xl font-semibold text-white">Clipboard Import</h2>
           <p className="mb-5 text-sm text-zinc-400">
@@ -1177,7 +1230,7 @@ export default function SettingsPage() {
         </section>
       )}
 
-      {activeTab === 'simulation' && isDesktop && (
+      {activeTab === 'application' && isDesktop && (
         <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
           <h2 className="mb-3 text-xl font-semibold text-white">Close Behavior</h2>
           <p className="mb-5 text-sm text-zinc-400">
@@ -1237,7 +1290,7 @@ export default function SettingsPage() {
         </section>
       )}
 
-      {activeTab === 'simulation' && isDesktop && (
+      {activeTab === 'application' && isDesktop && (
         <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
           <h2 className="mb-3 text-xl font-semibold text-white">Share over LAN</h2>
           <p className="mb-5 max-w-2xl text-sm text-zinc-400">

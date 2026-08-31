@@ -229,6 +229,9 @@ pub struct ResolvedItem {
     /// Season ID from upgrade track (0 if none).
     #[serde(default, skip_serializing_if = "is_zero_i64")]
     pub season_id: i64,
+    /// Whether the item came from a source in the active WoW season.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_season: Option<bool>,
     #[serde(default)]
     pub inventory_type: i64,
     /// Whether this item is a catalyst-generated tier alternative.

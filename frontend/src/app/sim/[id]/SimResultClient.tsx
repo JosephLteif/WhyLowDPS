@@ -33,10 +33,12 @@ import {
 } from '../../lib/sim-options-catalog';
 import { parseCharacterInfo, parseSimcBuffs, SimcBuff } from '@/lib/simc-parser';
 import { useWowheadTooltips } from '../../lib/useWowheadTooltips';
+import { useNotifications } from '../../components/shared/NotificationSystem';
 
 import { API_URL, fetchJson } from '../../lib/api';
 import { formatScenarioLabel, getScenarioSiblings, type ScenarioSibling } from '../../lib/scenario-siblings';
 import { simResultHref } from '../../lib/routes';
+import { trackSimulations } from '../../lib/sim-tracking';
 import { getSimReturnTarget, resolveSimAgainNavigation, setSimReturnNotice } from '../../lib/sim-return';
 
 interface JobData {
@@ -50,6 +52,8 @@ interface JobData {
   progress_stage?: string;
   progress_detail?: string;
   stages_completed?: string[];
+  stage_timings?: Array<{ name: string; elapsed: number }>;
+  active_stage_elapsed?: number;
   result: Record<string, unknown> | null;
   error: string | null;
   profilesets_completed?: number;
@@ -80,6 +84,29 @@ interface TimelineEvent {
   spell_id?: number;
   target?: string;
   queue_failed?: boolean;
+}
+
+function simTypeLabel(simType?: string): string {
+  return (
+    (
+      {
+        quick: 'Quick Sim',
+        top_gear: 'Top Gear',
+        droptimizer: 'Drop Finder',
+        upgrade_compare: 'Upgrade Compare',
+      } as Record<string, string>
+    )[simType || ''] ||
+    simType ||
+    'Simulation'
+  );
+}
+
+function isActiveSimStatus(status: string): boolean {
+  return status === 'pending' || status === 'running' || status === 'paused';
+}
+
+function isTerminalSimStatus(status: string): boolean {
+  return status === 'done' || status === 'failed' || status === 'cancelled';
 }
 
 const iconCache = new Map<string, string>();
@@ -119,11 +146,6 @@ function useIcons(entries: { type: 'spell' | 'item'; id: number }[]) {
   }, [depKey, entries]);
 
   return icons;
-}
-
-interface StageTiming {
-  name: string;
-  elapsed: number;
 }
 
 function parseSeriesPoints(input: unknown): TimelinePoint[] {
@@ -364,6 +386,7 @@ function CollapsibleSection({
 export default function SimResultClient() {
   const router = useRouter();
   const { lightMode } = useAuth();
+  const { notify } = useNotifications();
   const params = useParams();
   const searchParams = useSearchParams();
   const paramId = params.id as string;
@@ -398,20 +421,19 @@ export default function SimResultClient() {
   const [siblings, setSiblings] = useState<ScenarioSibling[] | null>(null);
   const [liveRelatedScenarios, setLiveRelatedScenarios] = useState<ScenarioSibling[]>([]);
   const [siblingStatuses, setSiblingStatuses] = useState<Record<string, string>>({});
-  const [stageTimings, setStageTimings] = useState<StageTiming[]>([]);
-  const [activeStageElapsed, setActiveStageElapsed] = useState(0);
   const [rerunError, setRerunError] = useState('');
   const [rerunning, setRerunning] = useState(false);
-  const activeStageNameRef = useRef<string | null>(null);
-  const activeStageStartedAtRef = useRef<number | null>(null);
-  const activeStageAccumulatedRef = useRef(0);
-  const stageTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const previousStatusRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (id && id !== '_' && id !== activeScenarioId) {
       setActiveScenarioId(id);
     }
   }, [id, activeScenarioId]);
+
+  useEffect(() => {
+    previousStatusRef.current = null;
+  }, [activeScenarioId]);
 
   const r = job?.result as any;
   const timelineFallbackData = timelineFallback;
@@ -552,20 +574,6 @@ export default function SimResultClient() {
   const iconsMap = useIcons(activeBuffIconsParams);
   useWowheadTooltips([activeBuffs, job]);
 
-  const appendStageTiming = useCallback(
-    (name: string, elapsed: number) => {
-      setStageTimings((prev) => {
-        if (prev.some((entry) => entry.name === name)) return prev;
-        const next = [...prev, { name, elapsed: Math.max(0, elapsed) }];
-        if (typeof window !== 'undefined') {
-          sessionStorage.setItem(`sim_stage_timings_${activeScenarioId}`, JSON.stringify(next));
-        }
-        return next;
-      });
-    },
-    [activeScenarioId]
-  );
-
   useEffect(() => {
     setSiblings(getScenarioSiblings());
   }, []);
@@ -660,51 +668,6 @@ export default function SimResultClient() {
   }, []);
 
   useEffect(() => {
-    activeStageNameRef.current = null;
-    activeStageStartedAtRef.current = null;
-    setActiveStageElapsed(0);
-    if (stageTickRef.current) {
-      clearInterval(stageTickRef.current);
-      stageTickRef.current = null;
-    }
-    if (typeof window === 'undefined' || !activeScenarioId || activeScenarioId === '_') {
-      setStageTimings([]);
-      return;
-    }
-    try {
-      const raw = sessionStorage.getItem(`sim_stage_timings_${activeScenarioId}`);
-      if (!raw) {
-        setStageTimings([]);
-        return;
-      }
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        setStageTimings(
-          parsed
-            .map((entry) => ({
-              name: String(entry?.name ?? ''),
-              elapsed: Number(entry?.elapsed ?? 0),
-            }))
-            .filter((entry) => entry.name)
-        );
-      } else {
-        setStageTimings([]);
-      }
-    } catch {
-      setStageTimings([]);
-    }
-  }, [activeScenarioId]);
-
-  useEffect(() => {
-    return () => {
-      if (stageTickRef.current) {
-        clearInterval(stageTickRef.current);
-        stageTickRef.current = null;
-      }
-    };
-  }, []);
-
-  useEffect(() => {
     if (toolbarScenarios.length === 0) return;
     const siblingList = toolbarScenarios;
     const maxPolledSiblings = 40;
@@ -760,7 +723,38 @@ export default function SimResultClient() {
     async function poll() {
       try {
         const data = await fetchJson<JobData>(`${API_URL}/api/sim/${activeScenarioId}`);
-        if (active) setJob(data);
+        if (active) {
+          const previousStatus = previousStatusRef.current;
+          if (
+            previousStatus &&
+            isActiveSimStatus(previousStatus) &&
+            isTerminalSimStatus(data.status)
+          ) {
+            const parsedCharacter = data.simc_input ? parseCharacterInfo(data.simc_input) : null;
+            const playerName =
+              data.linked_name ||
+              (parsedCharacter?.kind === 'character'
+                ? parsedCharacter.name
+                : parsedCharacter?.kind === 'dungeon'
+                  ? parsedCharacter.title
+                  : 'Simulation');
+
+            notify({
+              title: data.status === 'done' ? 'Simulation finished' : 'Simulation update',
+              description: `${playerName} · ${simTypeLabel(data.sim_type)}`,
+              variant: data.status === 'done' ? 'success' : 'info',
+              durationMs: 6000,
+              href: simResultHref(activeScenarioId),
+              dedupeKey: `simulation:${activeScenarioId}`,
+              action: {
+                label: 'Open result',
+                onClick: () => router.push(simResultHref(activeScenarioId)),
+              },
+            });
+          }
+          previousStatusRef.current = data.status;
+          setJob(data);
+        }
         if (
           active &&
           (data.status === 'pending' || data.status === 'running' || data.status === 'paused')
@@ -776,7 +770,7 @@ export default function SimResultClient() {
       active = false;
       clearTimeout(timer);
     };
-  }, [activeScenarioId]);
+  }, [activeScenarioId, notify, router]);
 
   // Keep polling while active so the stats card can show the current phase ETA
   // even when the log console is collapsed.
@@ -809,84 +803,6 @@ export default function SimResultClient() {
       clearTimeout(timer);
     };
   }, [activeScenarioId, job?.status]);
-
-  useEffect(() => {
-    if (!job) return;
-    const isActive = job.status === 'running' || job.status === 'pending';
-    const isPaused = job.status === 'paused';
-    const stage = job.progress_stage?.trim();
-    const now = Date.now();
-
-    if (!isActive && !isPaused) {
-      if (activeStageNameRef.current && activeStageStartedAtRef.current) {
-        const elapsed =
-          activeStageAccumulatedRef.current + (now - activeStageStartedAtRef.current) / 1000;
-        appendStageTiming(activeStageNameRef.current, elapsed);
-      }
-      activeStageNameRef.current = null;
-      activeStageStartedAtRef.current = null;
-      activeStageAccumulatedRef.current = 0;
-      setActiveStageElapsed(0);
-      if (stageTickRef.current) {
-        clearInterval(stageTickRef.current);
-        stageTickRef.current = null;
-      }
-      return;
-    }
-
-    if (isPaused) {
-      if (activeStageNameRef.current && activeStageStartedAtRef.current) {
-        activeStageAccumulatedRef.current += (now - activeStageStartedAtRef.current) / 1000;
-        activeStageStartedAtRef.current = null;
-        setActiveStageElapsed(activeStageAccumulatedRef.current);
-      }
-      if (stageTickRef.current) {
-        clearInterval(stageTickRef.current);
-        stageTickRef.current = null;
-      }
-      return;
-    }
-
-    if (!stage) return;
-
-    if (!activeStageNameRef.current) {
-      activeStageNameRef.current = stage;
-      activeStageStartedAtRef.current = now;
-      activeStageAccumulatedRef.current = 0;
-      setActiveStageElapsed(0);
-    } else if (activeStageNameRef.current !== stage) {
-      if (activeStageStartedAtRef.current) {
-        const elapsed =
-          activeStageAccumulatedRef.current + (now - activeStageStartedAtRef.current) / 1000;
-        appendStageTiming(activeStageNameRef.current, elapsed);
-      }
-      activeStageNameRef.current = stage;
-      activeStageStartedAtRef.current = now;
-      activeStageAccumulatedRef.current = 0;
-      setActiveStageElapsed(0);
-    } else if (!activeStageStartedAtRef.current) {
-      activeStageStartedAtRef.current = now;
-    }
-
-    setActiveStageElapsed(
-      activeStageAccumulatedRef.current +
-        (activeStageStartedAtRef.current ? (now - activeStageStartedAtRef.current) / 1000 : 0)
-    );
-    if (!stageTickRef.current) {
-      stageTickRef.current = setInterval(() => {
-        const startedAt = activeStageStartedAtRef.current;
-        if (!startedAt) return;
-        setActiveStageElapsed(activeStageAccumulatedRef.current + (Date.now() - startedAt) / 1000);
-      }, 1000);
-    }
-
-    return () => {
-      if (stageTickRef.current) {
-        clearInterval(stageTickRef.current);
-        stageTickRef.current = null;
-      }
-    };
-  }, [job, appendStageTiming]);
 
   useEffect(() => {
     if (!activeScenarioId || activeScenarioId === '_' || !job?.result) return;
@@ -949,24 +865,22 @@ export default function SimResultClient() {
   }, [getCurrentSimId, getSimTypeFallbackUrl, job?.sim_type, router]);
 
   const handleRerunInput = useCallback(async () => {
-    const input = job?.simc_input;
-    if (!input || rerunning) return;
+    const sourceJobId = job?.id || activeScenarioId;
+    if (!sourceJobId || sourceJobId === '_' || !job?.simc_input || rerunning) return;
 
     setRerunError('');
     setRerunning(true);
     try {
-      const storedOptions = job.options && typeof job.options === 'object' ? job.options : {};
-      const response = await fetchJson<{ id?: string }>(`${API_URL}/api/sim`, {
-        method: 'POST',
-        body: JSON.stringify({
-          ...storedOptions,
-          simc_input: input,
-          sim_type: job.sim_type || storedOptions.sim_type || 'quick',
-          iterations: job.iterations ?? storedOptions.iterations ?? 10000,
-          fight_style: job.fight_style || storedOptions.fight_style || 'Patchwerk',
-        }),
-      });
+      const response = await fetchJson<{ id?: string }>(
+        `${API_URL}/api/sim/${encodeURIComponent(sourceJobId)}/rerun`,
+        {
+          method: 'POST',
+        }
+      );
       if (!response?.id) throw new Error('The simulation could not be started.');
+      trackSimulations([{ id: response.id, simType: job.sim_type }]);
+      setJob(null);
+      setActiveScenarioId(response.id);
       router.push(simResultHref(response.id));
     } catch (error: unknown) {
       setRerunError(
@@ -975,7 +889,7 @@ export default function SimResultClient() {
     } finally {
       setRerunning(false);
     }
-  }, [job, rerunning, router]);
+  }, [activeScenarioId, job, rerunning, router]);
 
   const handleCancelled = useCallback(() => {
     const currentSimId = getCurrentSimId();
@@ -1143,8 +1057,8 @@ export default function SimResultClient() {
           progressDetail={job.progress_detail}
           createdAt={job.created_at}
           stagesCompleted={job.stages_completed}
-          stageTimings={stageTimings}
-          activeStageElapsed={activeStageElapsed}
+          stageTimings={job.stage_timings}
+          activeStageElapsed={job.active_stage_elapsed}
           jobId={activeScenarioId}
           onCancelled={handleCancelled}
           onStatusChange={(status) =>
@@ -1272,7 +1186,7 @@ export default function SimResultClient() {
             iterations={r.iterations as number | undefined}
             targetError={r.target_error as number | undefined}
             elapsedTime={r.elapsed_time_seconds as number | undefined}
-            stageTimings={stageTimings}
+            stageTimings={job.stage_timings}
             talentString={r.talent_string as string | undefined}
             currencies={r.currencies as any}
             enableWishlistActions={isDropFinderResult}
@@ -1334,7 +1248,7 @@ export default function SimResultClient() {
             iterations={r.iterations as number | undefined}
             targetError={r.target_error as number | undefined}
             elapsedTime={r.elapsed_time_seconds as number | undefined}
-            stageTimings={stageTimings}
+            stageTimings={job.stage_timings}
             avgIlevel={avgIlevel}
           >
             {info?.kind === 'dungeon' && (

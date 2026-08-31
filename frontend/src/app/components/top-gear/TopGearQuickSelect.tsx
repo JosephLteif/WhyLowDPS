@@ -3,6 +3,8 @@ import ComboSummary from '../ComboSummary';
 interface TopGearQuickSelectProps {
   comboCount: number;
   maxCombinations: number;
+  isComputing?: boolean;
+  limitReached?: boolean;
   hasSelection: boolean;
   vaultCount: number;
   allVaultSelected: boolean;
@@ -11,6 +13,7 @@ interface TopGearQuickSelectProps {
   onToggleVault: () => void;
   onToggleCatalyst: () => void;
   onSelectAll: () => void;
+  onSelectAllEligible: () => void;
   onClear: () => void;
   comboBreakdown?: string | null;
 }
@@ -18,12 +21,15 @@ interface TopGearQuickSelectProps {
 export default function TopGearQuickSelect({
   comboCount,
   maxCombinations,
+  isComputing = false,
+  limitReached = false,
   vaultCount,
   catalystCount,
   allCatalystSelected,
   onToggleVault,
   onToggleCatalyst,
   onSelectAll,
+  onSelectAllEligible,
   onClear,
   comboBreakdown = null,
 }: TopGearQuickSelectProps) {
@@ -70,6 +76,14 @@ export default function TopGearQuickSelect({
         </button>
         <button
           type="button"
+          onClick={onSelectAllEligible}
+          className={`${baseButtonClass} ${goldButtonClass}`}
+          title="Select all eligible items"
+        >
+          Eligible
+        </button>
+        <button
+          type="button"
           onClick={onClear}
           className={`${baseButtonClass} ${mutedButtonClass}`}
         >
@@ -78,6 +92,8 @@ export default function TopGearQuickSelect({
         <ComboSummary
           comboCount={comboCount}
           maxCombinations={maxCombinations}
+          isComputing={isComputing}
+          limitReached={limitReached}
         />
       </div>
       <p

@@ -8,8 +8,13 @@ import type { CharacterStatisticsPayload } from './character-domain-types';
 import type { FightScenario } from './types';
 import { storeScenarioSiblings, clearScenarioSiblings } from './scenario-siblings';
 import { simResultHref } from './routes';
+import { trackSimulations } from './sim-tracking';
 import { buildFightStylePayload } from './fight-style';
 import { normalizeLiveCharacterStats } from './stat-snapshot';
+import {
+  DEFAULT_SIM_IDLE_TIMEOUT_SECONDS,
+  DEFAULT_SIM_TIMEOUT_SECONDS,
+} from './sim-timeout';
 import {
   buildCurrentReturnUrl,
   registerSimReturnTarget,
@@ -33,6 +38,10 @@ interface UseSimSubmitOptions {
     captureState?: () => unknown;
   };
 }
+
+export type SimSubmitOptions = {
+  threadsOverride?: number;
+};
 
 function normalizeName(name: string): string {
   return name.trim().toLowerCase();
@@ -106,6 +115,8 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
     simcInput,
     fightStyle,
     threads,
+    simTimeoutSeconds,
+    simIdleTimeoutSeconds,
     selectedTalent,
     targetCount,
     fightLength,
@@ -196,7 +207,7 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
     }
   }, [lightMode, simcInput]);
 
-  const submit = useCallback(async () => {
+  const submit = useCallback(async ({ threadsOverride }: SimSubmitOptions = {}) => {
     setError('');
 
     if (validate) {
@@ -245,7 +256,9 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
         ...pagePayload,
         iterations: 10000,
         target_error: 0.1,
-        threads,
+        threads: threadsOverride ?? threads,
+        sim_timeout_seconds: simTimeoutSeconds ?? DEFAULT_SIM_TIMEOUT_SECONDS,
+        sim_idle_timeout_seconds: simIdleTimeoutSeconds ?? DEFAULT_SIM_IDLE_TIMEOUT_SECONDS,
         simc_channel: simcChannel || 'bundled',
         ...(batchId ? { batch_id: batchId } : {}),
         ...(selectedTalent ? { talents: selectedTalent } : {}),
@@ -292,6 +305,7 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
         configs.map(async (config) => {
           return fetchJson<any>(`${API_URL}${endpoint}`, {
             method: 'POST',
+            timeoutMs: 120_000,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               ...sharedPayload,
@@ -310,6 +324,7 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
       if (scenarios.length === 0) {
         const r = results[0];
         if (r.status === 'fulfilled') {
+          trackSimulations([{ id: r.value.id, simType, playerName: identity?.name }]);
           if (simAgainTarget) {
             registerSimReturnTarget(r.value.id, simAgainTarget);
           }
@@ -337,6 +352,13 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
           .filter((s): s is NonNullable<typeof s> => s !== null);
 
         if (siblings.length > 0) {
+          trackSimulations(
+            siblings.map((s) => ({
+              id: s.id,
+              simType,
+              playerName: identity?.name,
+            }))
+          );
           if (simAgainTarget) {
             registerSimReturnTargets(
               siblings.map((s) => s.id),
@@ -407,6 +429,8 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
     fetchBaselineLiveStats,
     simAgain,
     simcInput,
+    simTimeoutSeconds,
+    simIdleTimeoutSeconds,
   ]);
 
   const buttonLabel = useCallback(

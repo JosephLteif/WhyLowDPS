@@ -11,6 +11,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { usePathname } from 'next/navigation';
 
 export type NotificationVariant = 'default' | 'success' | 'warning' | 'error' | 'info';
 
@@ -133,6 +134,46 @@ function isNotificationVariant(value: unknown): value is NotificationVariant {
   return ['default', 'success', 'warning', 'error', 'info'].includes(value as string);
 }
 
+function simulationIdFromHref(href?: string): string | null {
+  if (!href) return null;
+
+  try {
+    const target = new URL(href, window.location.origin);
+    if (target.origin !== window.location.origin) return null;
+
+    if (/^\/sim\/_\/?$/.test(target.pathname)) {
+      return target.searchParams.get('id');
+    }
+
+    const match = target.pathname.match(/^\/sim\/([^/]+)\/?$/);
+    return match?.[1] ? decodeURIComponent(match[1]) : null;
+  } catch {
+    return null;
+  }
+}
+
+function notificationDedupeKey(notification: NotificationHistoryItem): string {
+  const simulationId = simulationIdFromHref(notification.href);
+  return notification.dedupeKey || (simulationId ? `simulation:${simulationId}` : notification.id);
+}
+
+function sameNotificationTarget(href: string, currentHref: string): boolean {
+  try {
+    const target = new URL(href, window.location.origin);
+    const current = new URL(currentHref, window.location.origin);
+    if (target.origin !== current.origin) return false;
+    if (`${target.pathname}${target.search}` === `${current.pathname}${current.search}`) {
+      return true;
+    }
+
+    const targetSimulationId = simulationIdFromHref(href);
+    const currentSimulationId = simulationIdFromHref(currentHref);
+    return Boolean(targetSimulationId && targetSimulationId === currentSimulationId);
+  } catch {
+    return false;
+  }
+}
+
 function loadNotificationHistory(): NotificationHistoryItem[] {
   try {
     const stored = JSON.parse(
@@ -140,18 +181,30 @@ function loadNotificationHistory(): NotificationHistoryItem[] {
     );
     if (!Array.isArray(stored)) return [];
 
-    return stored
+    const parsed = stored
       .filter((item) => item && typeof item.id === 'string' && typeof item.title === 'string')
-      .map((item) => ({
-        id: item.id,
-        title: item.title,
-        description: typeof item.description === 'string' ? item.description : undefined,
-        variant: isNotificationVariant(item.variant) ? item.variant : 'default',
-        href: typeof item.href === 'string' ? item.href : undefined,
-        dedupeKey: typeof item.dedupeKey === 'string' ? item.dedupeKey : undefined,
-        createdAt: typeof item.createdAt === 'number' ? item.createdAt : Date.now(),
-        read: item.read === true,
-      }))
+      .map((item) => {
+        const notification = {
+          id: item.id,
+          title: item.title,
+          description: typeof item.description === 'string' ? item.description : undefined,
+          variant: isNotificationVariant(item.variant) ? item.variant : 'default',
+          href: typeof item.href === 'string' ? item.href : undefined,
+          dedupeKey: typeof item.dedupeKey === 'string' ? item.dedupeKey : undefined,
+          createdAt: typeof item.createdAt === 'number' ? item.createdAt : Date.now(),
+          read: item.read === true,
+        } satisfies NotificationHistoryItem;
+        const simulationId = simulationIdFromHref(notification.href);
+        return simulationId && !notification.dedupeKey
+          ? { ...notification, dedupeKey: `simulation:${simulationId}` }
+          : notification;
+      });
+    const compacted = new Map<string, NotificationHistoryItem>();
+    parsed.forEach((notification) => {
+      compacted.set(notificationDedupeKey(notification), notification);
+    });
+    return [...compacted.values()]
+      .sort((left, right) => left.createdAt - right.createdAt)
       .slice(-MAX_NOTIFICATION_HISTORY);
   } catch {
     return [];
@@ -202,7 +255,7 @@ function NotificationCard({
   return (
     <div
       role="status"
-      className={`notification-card pointer-events-auto relative w-[min(92vw,380px)] overflow-hidden rounded-xl border bg-surface/95 p-4 shadow-2xl shadow-black/40 backdrop-blur-sm ${styles.border} ${notification.isExiting ? 'notification-exit' : 'notification-enter'}`}
+      className={`notification-card bg-surface/95 pointer-events-auto relative w-[min(92vw,380px)] overflow-hidden rounded-xl border p-4 shadow-2xl shadow-black/40 backdrop-blur-sm ${styles.border} ${notification.isExiting ? 'notification-exit' : 'notification-enter'}`}
       style={{ '--notification-duration': `${notification.durationMs}ms` } as CSSProperties}
     >
       <div className="flex items-start gap-3">
@@ -228,7 +281,7 @@ function NotificationCard({
                   onDismiss(notification.id);
                 }
               }}
-              className={`mt-3 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 ${styles.action}`}
+              className={`focus-visible:ring-gold/60 mt-3 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:ring-2 focus-visible:outline-none ${styles.action}`}
             >
               {notification.action.label}
             </button>
@@ -237,7 +290,7 @@ function NotificationCard({
         <button
           type="button"
           onClick={() => onDismiss(notification.id)}
-          className="rounded-md p-1 text-zinc-500 transition-colors hover:bg-white/10 hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60"
+          className="focus-visible:ring-gold/60 rounded-md p-1 text-zinc-500 transition-colors hover:bg-white/10 hover:text-zinc-200 focus-visible:ring-2 focus-visible:outline-none"
           aria-label={`Dismiss ${notification.title}`}
         >
           <X className="h-4 w-4" strokeWidth={2} />
@@ -253,6 +306,7 @@ function NotificationCard({
 }
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
   const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
   const [history, setHistory] = useState<NotificationHistoryItem[]>([]);
   const [historyReady, setHistoryReady] = useState(false);
@@ -349,19 +403,23 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const clearHistory = useCallback(() => {
+    dedupeIds.current.clear();
     setHistory([]);
   }, []);
 
   useEffect(() => {
     setHistory((current) => {
       const stored = loadNotificationHistory();
-      const merged = new Map(stored.map((notification) => [notification.id, notification]));
+      const merged = new Map<string, NotificationHistoryItem>();
       stored.forEach((notification) => {
+        merged.set(notificationDedupeKey(notification), notification);
         if (notification.dedupeKey && !dedupeIds.current.has(notification.dedupeKey)) {
           dedupeIds.current.set(notification.dedupeKey, notification.id);
         }
       });
-      current.forEach((notification) => merged.set(notification.id, notification));
+      current.forEach((notification) => {
+        merged.set(notificationDedupeKey(notification), notification);
+      });
       current.forEach((notification) => {
         if (notification.dedupeKey) dedupeIds.current.set(notification.dedupeKey, notification.id);
       });
@@ -375,6 +433,30 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (historyReady) saveNotificationHistory(history);
   }, [history, historyReady]);
+
+  useEffect(() => {
+    if (!historyReady || !pathname) return;
+
+    const currentSearch = window.location.search;
+    const currentHref = `${pathname}${currentSearch}`;
+    setHistory((current) => {
+      let changed = false;
+      const next = current.map((notification) => {
+        if (notification.read || !notification.href) return notification;
+
+        try {
+          if (!sameNotificationTarget(notification.href, currentHref)) return notification;
+        } catch {
+          return notification;
+        }
+
+        changed = true;
+        return { ...notification, read: true };
+      });
+
+      return changed ? next : current;
+    });
+  }, [history, historyReady, pathname]);
 
   useEffect(() => {
     const timers = exitTimers.current;
@@ -396,7 +478,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       <div
         aria-live="polite"
         aria-atomic="false"
-        className="pointer-events-none fixed bottom-4 right-4 z-[140] flex w-[calc(100%-2rem)] max-w-[380px] flex-col items-end gap-3 sm:bottom-6 sm:right-6"
+        className="pointer-events-none fixed right-4 bottom-4 z-[140] flex w-[calc(100%-2rem)] max-w-[380px] flex-col items-end gap-3 sm:right-6 sm:bottom-6"
       >
         {notifications.map((notification) => (
           <NotificationCard

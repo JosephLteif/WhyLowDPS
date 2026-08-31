@@ -29,6 +29,7 @@ export const isDesktop = isDesktopRuntime();
 export const isHostedPrivate = process.env.NEXT_PUBLIC_DEPLOYMENT_MODE === 'hosted-private';
 export const LAN_ACCESS_REVOKED_EVENT = 'whylowdps-lan-access-revoked';
 export const LAN_ACCESS_REQUIRED_STORAGE_KEY = 'whylowdps_lan_access_required';
+export const BROWSER_USER_SCOPE_CHANGED_EVENT = 'whylowdps-user-scope-changed';
 
 export function isLanHost(hostname: string): boolean {
   if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') return true;
@@ -73,14 +74,48 @@ const DEVICE_STORAGE_KEYS = new Set([
   'whylowdps_data_ready',
   'whylowdps_light_mode',
   'whylowdps_full_mode',
+  'whylowdps_guided_tours_v1',
   'whylowdps_update_channel',
 ]);
+
+function restoreLegacyDeviceStorage(nextUserId: string): boolean {
+  const saved = localStorage.getItem(`${USER_SCOPE_PREFIX}${nextUserId}`);
+  if (!saved) return false;
+
+  try {
+    const values = JSON.parse(saved) as Record<string, string>;
+    let restored = false;
+    for (const key of DEVICE_STORAGE_KEYS) {
+      const value = values[key];
+      if (value === undefined) continue;
+      if (localStorage.getItem(key) === null) localStorage.setItem(key, value);
+      delete values[key];
+      restored = true;
+    }
+    if (restored) {
+      if (Object.keys(values).length > 0) {
+        localStorage.setItem(`${USER_SCOPE_PREFIX}${nextUserId}`, JSON.stringify(values));
+      } else {
+        localStorage.removeItem(`${USER_SCOPE_PREFIX}${nextUserId}`);
+      }
+    }
+    return restored;
+  } catch {
+    return false;
+  }
+}
 
 /** Swap account-owned browser preferences without changing every feature's storage key. */
 export async function switchBrowserUserScope(nextUserId: string): Promise<void> {
   if (typeof window === 'undefined') return;
   const currentUserId = localStorage.getItem(USER_SCOPE_KEY);
-  if (currentUserId === nextUserId) return;
+  const restoredLegacyDeviceStorage = restoreLegacyDeviceStorage(nextUserId);
+  if (currentUserId === nextUserId) {
+    if (restoredLegacyDeviceStorage) {
+      window.dispatchEvent(new Event(BROWSER_USER_SCOPE_CHANGED_EVENT));
+    }
+    return;
+  }
 
   const accountValues: Record<string, string> = {};
   for (let index = localStorage.length - 1; index >= 0; index -= 1) {
@@ -115,6 +150,7 @@ export async function switchBrowserUserScope(nextUserId: string): Promise<void> 
   sessionStorage.clear();
   Object.keys(memoryCache).forEach((key) => delete memoryCache[key]);
   if ('caches' in window) await caches.delete(PERSISTENT_CACHE_NAME).catch(() => false);
+  window.dispatchEvent(new Event(BROWSER_USER_SCOPE_CHANGED_EVENT));
 }
 const DEFAULT_FETCH_TIMEOUT_MS = 8000;
 const GET_RETRY_ATTEMPTS = 2;

@@ -1,6 +1,6 @@
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use super::types::SimOptions;
@@ -10,6 +10,29 @@ use crate::result_parser;
 use crate::simc_runner;
 use crate::storage::{self, JobStorage};
 use crate::types::ResolveGearResponse;
+
+pub(super) fn resolve_simc_binary_for_request(simc_path: &Path) -> Result<PathBuf, String> {
+    #[cfg(feature = "desktop")]
+    {
+        if simc_path.exists() {
+            return Ok(simc_path.to_path_buf());
+        }
+
+        Err(
+            "SimulationCraft is not available yet. Check your internet connection or update the SimC runtime from Settings."
+                .to_string(),
+        )
+    }
+
+    #[cfg(not(feature = "desktop"))]
+    {
+        if simc_path.exists() {
+            Ok(simc_path.to_path_buf())
+        } else {
+            Err(format!("simc binary not found at: {}", simc_path.display()))
+        }
+    }
+}
 
 /// Sanitize user-provided custom SimC input by stripping dangerous directives.
 pub(super) fn sanitize_custom_simc(input: &str) -> String {
@@ -511,6 +534,90 @@ pub(super) fn spawn_staged_sim(
                     .unwrap_or(false);
                 if !is_cancelled {
                     store.set_error(&job_id, e.to_string());
+                }
+            }
+        }
+        log_buffer.remove(&job_id);
+    });
+}
+
+pub(super) fn spawn_direct_sim(
+    store: Arc<dyn JobStorage>,
+    auth: Arc<crate::server::auth_handlers::BlizzardAuthState>,
+    simc: PathBuf,
+    options: Value,
+    job_id: String,
+    simc_input: String,
+    log_buffer: Arc<LogBuffer>,
+) {
+    simc_runner::register_job_control(&job_id);
+    tokio::spawn(async move {
+        if !prepare_job_run(&store, &job_id).await {
+            simc_runner::cleanup_job_control(&job_id);
+            log_buffer.remove(&job_id);
+            return;
+        }
+        store.update_progress(&job_id, 20, "Simulating", "");
+        let logs = log_buffer.clone();
+        let store_progress = store.clone();
+        let progress_job_id = job_id.clone();
+        let log_job_id = job_id.clone();
+
+        match simc_runner::run_simc(
+            &simc,
+            &job_id,
+            &simc_input,
+            &options,
+            move |current, total| {
+                let pct = 20 + ((current as f64 / total as f64) * 80.0) as u8;
+                store_progress.update_progress(
+                    &progress_job_id,
+                    pct,
+                    "Simulating",
+                    &format!("{}/{} iterations", current, total),
+                );
+            },
+            move |line| {
+                logs.push_line(&log_job_id, line.to_string());
+            },
+        )
+        .await
+        {
+            Ok(output) => {
+                let mut parsed = result_parser::parse_simc_result(&output.json, true);
+                if let Some(job_snap) = store.get(&job_id) {
+                    if let Some(baseline_live_stats) = job_snap
+                        .options
+                        .as_ref()
+                        .and_then(|options| options.get("baseline_live_stats"))
+                        .filter(|stats| !stats.is_null())
+                    {
+                        if let Some(obj) = parsed.as_object_mut() {
+                            obj.insert(
+                                "baseline_live_stats".to_string(),
+                                baseline_live_stats.clone(),
+                            );
+                        }
+                    }
+                }
+                inject_realm(&mut parsed, &simc_input);
+                let result_str = serde_json::to_string(&parsed).unwrap_or_default();
+                let raw_str = serde_json::to_string(&output.json).ok();
+                store.set_result(&job_id, result_str, raw_str);
+                store.set_report_files(&job_id, output.html_report, output.text_output);
+                super::discord_webhook::spawn_sim_completion_notification(
+                    store.clone(),
+                    auth,
+                    job_id.clone(),
+                );
+            }
+            Err(error) => {
+                let is_cancelled = store
+                    .get(&job_id)
+                    .map(|job| job.status == JobStatus::Cancelled)
+                    .unwrap_or(false);
+                if !is_cancelled {
+                    store.set_error(&job_id, error.to_string());
                 }
             }
         }

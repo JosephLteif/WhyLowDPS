@@ -6,7 +6,43 @@ struct TopGearGeneration {
     combo_metadata: HashMap<String, Vec<Value>>,
 }
 
-fn generate_top_gear_profilesets(req: &TopGearRequest) -> crate::error::Result<TopGearGeneration> {
+fn top_gear_currency_metadata(
+    combo_metadata: &HashMap<String, Vec<Value>>,
+    simc_input: &str,
+) -> HashMap<String, Value> {
+    let mut currency_ids: HashSet<u64> = crate::addon_parser::parse_upgrade_currencies(simc_input)
+        .keys()
+        .copied()
+        .collect();
+
+    for items in combo_metadata.values() {
+        for item in items {
+            let Some(costs) = item.get("upgrade_costs").and_then(Value::as_object) else {
+                continue;
+            };
+            currency_ids.extend(costs.keys().filter_map(|id| id.parse::<u64>().ok()));
+        }
+    }
+
+    currency_ids
+        .into_iter()
+        .map(|cid| {
+            let (name, icon) = crate::game_data::get_currency_info(cid).unwrap_or((
+                format!("Currency {}", cid),
+                "inv_misc_questionmark".to_string(),
+            ));
+            (
+                cid.to_string(),
+                json!({ "id": cid, "name": name, "icon": icon }),
+            )
+        })
+        .collect()
+}
+
+fn generate_top_gear_profilesets(
+    req: &TopGearRequest,
+    include_profileset_input: bool,
+) -> crate::error::Result<TopGearGeneration> {
     let mut simc_input = if req.max_upgrade {
         game_data::upgrade_simc_input(&req.simc_input)
     } else {
@@ -65,7 +101,7 @@ fn generate_top_gear_profilesets(req: &TopGearRequest) -> crate::error::Result<T
         .collect();
 
     let consumables = top_gear_consumables_from_options(&req.options);
-    let (generated_input, combo_count, combo_metadata) =
+    let (generated_input, combo_count, combo_metadata) = if include_profileset_input {
         profileset_generator::generate_top_gear_input_with_talents(
             &base_profile,
             &items_by_slot,
@@ -74,7 +110,18 @@ fn generate_top_gear_profilesets(req: &TopGearRequest) -> crate::error::Result<T
             &talent_builds,
             catalyst_charges,
             consumables.as_ref(),
+        )?
+    } else {
+        let combo_count = profileset_generator::count_top_gear_combinations_with_talents(
+            &base_profile,
+            &items_by_slot,
+            &req.selected_items,
+            &talent_builds,
+            catalyst_charges,
+            consumables.as_ref(),
         )?;
+        (String::new(), combo_count, HashMap::new())
+    };
 
     Ok(TopGearGeneration {
         generated_input,
@@ -112,7 +159,7 @@ pub(in crate::server) async fn create_top_gear_sim(
         generated_input,
         combo_count,
         combo_metadata,
-    } = match generate_top_gear_profilesets(&req) {
+    } = match generate_top_gear_profilesets(&req, true) {
         Ok(r) => r,
         Err(e) => {
             return HttpResponse::BadRequest().json(json!({"detail": e.to_string()}));
@@ -124,6 +171,8 @@ pub(in crate::server) async fn create_top_gear_sim(
             "detail": "No alternative items selected. Select at least one non-equipped item or multiple talent builds."
         }));
     }
+
+    let currencies = top_gear_currency_metadata(&combo_metadata, &req.simc_input);
 
     let mut generated_input = inject_expert_fields(&generated_input, &req.options);
     generated_input = apply_shared_simc_options(&generated_input, &req.options, true);
@@ -156,6 +205,7 @@ pub(in crate::server) async fn create_top_gear_sim(
     let meta_json = serde_json::to_string(&json!({
         "_combo_metadata": combo_metadata,
         "_combo_count": combo_count,
+        "currencies": currencies,
     }))
     .unwrap_or_default();
 
@@ -163,7 +213,7 @@ pub(in crate::server) async fn create_top_gear_sim(
     job.batch_id = req.options.batch_id.clone();
     store.insert(job);
 
-    let simc_binary = match resolve_simc_binary_for_request(simc_path.get_ref(), &req.options) {
+    let simc_binary = match resolve_simc_binary_for_request(simc_path.get_ref()) {
         Ok(path) => path,
         Err(detail) => return HttpResponse::BadRequest().json(json!({ "detail": detail })),
     };
@@ -189,17 +239,23 @@ pub(in crate::server) async fn create_top_gear_sim(
 pub(in crate::server) async fn get_top_gear_combo_count(
     req: web::Json<TopGearRequest>,
 ) -> HttpResponse {
-    match generate_top_gear_profilesets(&req) {
-        Ok(generation) => HttpResponse::Ok().json(json!({ "combo_count": generation.combo_count })),
+    match generate_top_gear_profilesets(&req, false) {
+        Ok(generation) => {
+            let limit = req
+                .max_combinations
+                .unwrap_or(*profileset_generator::MAX_COMBINATIONS);
+            HttpResponse::Ok().json(json!({
+                "combo_count": generation.combo_count,
+                "limit_reached": generation.combo_count > limit
+            }))
+        }
         Err(e) => {
             let e_str = e.to_string();
-            let count: usize = e_str
-                .split('(')
-                .nth(1)
-                .and_then(|s| s.split(')').next())
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(0);
-            HttpResponse::Ok().json(json!({ "combo_count": count, "error": e_str }))
+            HttpResponse::Ok().json(json!({
+                "combo_count": 0,
+                "error": e_str,
+                "limit_reached": false
+            }))
         }
     }
 }
@@ -236,6 +292,24 @@ mod tests {
 
     fn top_gear_request(value: serde_json::Value) -> TopGearRequest {
         serde_json::from_value(value).expect("top gear request")
+    }
+
+    #[test]
+    fn top_gear_currency_metadata_includes_cost_and_budget_currencies() {
+        let combo_metadata = HashMap::from([(
+            "Combo 1".to_string(),
+            vec![json!({ "upgrade_costs": { "3008": 12 } })],
+        )]);
+
+        let currencies = top_gear_currency_metadata(
+            &combo_metadata,
+            "# upgrade_currencies = c:3009:45",
+        );
+
+        assert_eq!(currencies["3008"]["id"].as_u64(), Some(3008));
+        assert_eq!(currencies["3009"]["id"].as_u64(), Some(3009));
+        assert!(currencies["3008"]["name"].is_string());
+        assert!(currencies["3008"]["icon"].is_string());
     }
 
     #[actix_web::test]

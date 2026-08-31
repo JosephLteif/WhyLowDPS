@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, ExternalLink } from 'lucide-react';
 import { OptionEntry } from '../../lib/sim-options-catalog';
 import { useWowheadTooltips } from '../../lib/useWowheadTooltips';
 
@@ -22,7 +22,9 @@ function useItemIcons(itemIds: number[]) {
     Promise.all(
       missing.map(async (id) => {
         try {
-          const res = await fetch(`https://nether.wowhead.com/tooltip/item/${id}?dataEnv=1&locale=0`);
+          const res = await fetch(
+            `https://nether.wowhead.com/tooltip/item/${id}?dataEnv=1&locale=0`
+          );
           if (!res.ok) return;
           const data = await res.json();
           if (data?.icon) ITEM_ICON_CACHE.set(id, data.icon);
@@ -170,16 +172,35 @@ export default function ConsumableSelect({
           role="button"
           tabIndex={0}
           onClick={() => !disabled && setOpen((v) => !v)}
-          className={`flex w-full items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-2 text-left text-sm transition-colors ${
+          className={`border-border bg-surface flex w-full items-center gap-2 rounded-md border px-2.5 py-2 text-left text-sm transition-colors ${
             disabled
               ? 'cursor-not-allowed text-zinc-500 opacity-70'
-              : 'cursor-pointer text-zinc-200 hover:border-border-light'
+              : 'hover:border-border-light cursor-pointer text-zinc-200'
           }`}
         >
           {selected?.icon || (selected?.itemId && itemIcons.get(selected.itemId)) ? (
+            <img
+              src={`https://wow.zamimg.com/images/wow/icons/small/${
+                (selected?.itemId && itemIcons.get(selected.itemId)) || selected?.icon
+              }.jpg`}
+              alt=""
+              className="h-[22px] w-[22px] shrink-0 rounded-[4px]"
+            />
+          ) : (
+            <span className="border-border bg-surface-2 h-[22px] w-[22px] shrink-0 rounded-[4px] border" />
+          )}
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate">{selected ? optionSelectLabel(selected) : 'None'}</span>
+            <QualityBadge quality={selectedQuality} />
+          </span>
+          {selected && (selected.itemId || selected.spellId) && (
             <a
               href={wowheadDataToHref(
-                selected?.itemId ? `item=${selected.itemId}` : selected?.spellId ? `spell=${selected.spellId}` : undefined
+                selected?.itemId
+                  ? `item=${selected.itemId}`
+                  : selected?.spellId
+                    ? `spell=${selected.spellId}`
+                    : undefined
               )}
               target="_blank"
               rel="noopener noreferrer"
@@ -191,45 +212,20 @@ export default function ConsumableSelect({
                     ? `spell=${selected.spellId}`
                     : undefined
               }
-              className="flex shrink-0 items-center"
+              aria-label={`View ${optionSelectLabel(selected)} on Wowhead`}
+              title={`View ${optionSelectLabel(selected)} on Wowhead`}
+              className="flex shrink-0 items-center rounded text-zinc-500 hover:text-zinc-200"
             >
-              <img
-                src={`https://wow.zamimg.com/images/wow/icons/small/${
-                  (selected?.itemId && itemIcons.get(selected.itemId)) || selected?.icon
-                }.jpg`}
-                alt=""
-                className="h-[22px] w-[22px] shrink-0 rounded-[4px]"
-              />
+              <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
             </a>
-          ) : (
-            <span className="h-[22px] w-[22px] shrink-0 rounded-[4px] border border-border bg-surface-2" />
           )}
-          <a
-            href={wowheadDataToHref(
-              selected?.itemId ? `item=${selected.itemId}` : selected?.spellId ? `spell=${selected.spellId}` : undefined
-            )}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="flex min-w-0 items-center gap-1.5"
-            data-wowhead={
-              selected?.itemId
-                ? `item=${selected.itemId}`
-                : selected?.spellId
-                  ? `spell=${selected.spellId}`
-                  : undefined
-            }
-          >
-            <span className="truncate">{selected ? optionSelectLabel(selected) : 'None'}</span>
-            <QualityBadge quality={selectedQuality} />
-          </a>
           <ChevronDown
             className={`ml-auto h-3.5 w-3.5 shrink-0 text-zinc-500 transition-transform ${open ? 'rotate-180' : ''}`}
             strokeWidth={2}
           />
         </div>
         <div
-          className={`absolute z-30 mt-1 w-full origin-top overflow-hidden rounded-md border border-border bg-surface shadow-xl transition-[opacity,transform] duration-250 ease-out ${
+          className={`border-border bg-surface absolute z-30 mt-1 w-full origin-top overflow-hidden rounded-md border shadow-xl transition-[opacity,transform] duration-250 ease-out ${
             open
               ? 'pointer-events-auto translate-y-0 scale-[1] opacity-100'
               : 'pointer-events-none -translate-y-1 scale-[0.985] opacity-0'
@@ -245,10 +241,10 @@ export default function ConsumableSelect({
               }}
               className="flex w-full cursor-pointer items-center gap-2 rounded px-2.5 py-2 text-left text-sm text-zinc-300 hover:bg-white/[0.04]"
             >
-              <span className="h-[22px] w-[22px] shrink-0 rounded-[4px] border border-border bg-surface-2" />
+              <span className="border-border bg-surface-2 h-[22px] w-[22px] shrink-0 rounded-[4px] border" />
               <span className="truncate">None</span>
             </button>
-            <div className="my-1 h-px bg-border/50" />
+            <div className="bg-border/50 my-1 h-px" />
             {groups.map((group) => {
               const hasQuality = group.familyMax > 0;
               const isSelectedFamily =
@@ -267,33 +263,40 @@ export default function ConsumableSelect({
                     }
                   }}
                 >
-                  <a
-                    href={wowheadDataToHref(
-                      group.itemId
-                        ? `item=${group.itemId}`
-                        : group.items[0]?.spellId
-                          ? `spell=${group.items[0].spellId}`
-                          : undefined
-                    )}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    data-wowhead={
-                      group.itemId
-                        ? `item=${group.itemId}`
-                        : group.items[0]?.spellId
-                          ? `spell=${group.items[0].spellId}`
-                          : undefined
-                    }
-                    className="flex min-w-0 flex-1 items-center gap-2 no-underline hover:no-underline"
-                  >
+                  <span className="flex min-w-0 flex-1 items-center gap-2">
                     <img
                       src={`https://wow.zamimg.com/images/wow/icons/small/${group.icon}.jpg`}
                       alt=""
                       className="h-[22px] w-[22px] shrink-0 rounded-[4px]"
                     />
                     <span className="truncate">{group.label}</span>
-                  </a>
+                  </span>
+                  {(group.itemId || group.items[0]?.spellId) && (
+                    <a
+                      href={wowheadDataToHref(
+                        group.itemId
+                          ? `item=${group.itemId}`
+                          : group.items[0]?.spellId
+                            ? `spell=${group.items[0].spellId}`
+                            : undefined
+                      )}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      data-wowhead={
+                        group.itemId
+                          ? `item=${group.itemId}`
+                          : group.items[0]?.spellId
+                            ? `spell=${group.items[0].spellId}`
+                            : undefined
+                      }
+                      aria-label={`View ${group.label} on Wowhead`}
+                      title={`View ${group.label} on Wowhead`}
+                      className="flex shrink-0 items-center rounded text-zinc-500 hover:text-zinc-200"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                    </a>
+                  )}
                   {hasQuality && (
                     <div className="flex shrink-0 items-center gap-1.5">
                       {group.items

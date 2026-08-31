@@ -1,5 +1,5 @@
 import { buildGearItemIdentity, buildGearItemUid } from '../../lib/gear-utils';
-import { ResolvedItem } from '../../lib/types';
+import type { ResolvedItem, ResolveGearResponse } from '../../lib/types';
 
 export type BadgeVariant = 'neutral' | 'gem' | 'enchant' | 'embellishment' | 'mod' | 'source';
 
@@ -150,6 +150,58 @@ export function hasModifierItemId(sourceType: string | undefined, itemId: number
 export function isWeaponOrTrinket(item: { slot?: string }): boolean {
   const slot = String(item.slot || '');
   return slot === 'main_hand' || slot === 'off_hand' || slot === 'trinket1' || slot === 'trinket2';
+}
+
+/**
+ * Return the item level used for the same-slot upgrade discount.
+ *
+ * The discount is based on the best item available for the slot, not only the
+ * currently equipped item. This matters when a higher-level bag alternative
+ * is present, such as a higher-tier leg item.
+ */
+export function getUpgradeDiscountIlevel(
+  item: Pick<ResolvedItem, 'slot'>,
+  resolved: Pick<ResolveGearResponse, 'slots'>
+): number {
+  const slotNames =
+    item.slot === 'finger1' || item.slot === 'finger2'
+      ? ['finger1', 'finger2']
+      : item.slot === 'trinket1' || item.slot === 'trinket2'
+        ? ['trinket1', 'trinket2']
+        : item.slot === 'main_hand' || item.slot === 'off_hand'
+          ? ['main_hand', 'off_hand']
+          : [item.slot];
+  const available = slotNames.flatMap((slot) => {
+    const slotResolution = resolved.slots[slot];
+    return slotResolution
+      ? [
+          ...(slotResolution.equipped ? [slotResolution.equipped] : []),
+          ...slotResolution.alternatives,
+        ]
+      : [];
+  });
+  const levels = available
+    .map((availableItem) => availableItem.ilevel)
+    .filter((ilevel) => ilevel > 0);
+
+  if (
+    item.slot === 'finger1' ||
+    item.slot === 'finger2' ||
+    item.slot === 'trinket1' ||
+    item.slot === 'trinket2'
+  ) {
+    return levels.sort((a, b) => b - a)[1] ?? 0;
+  }
+
+  if (item.slot === 'main_hand' || item.slot === 'off_hand') {
+    const oneHanded = available
+      .filter((availableItem) => availableItem.inventory_type === 13)
+      .map((availableItem) => availableItem.ilevel)
+      .sort((a, b) => b - a);
+    if (oneHanded[1] !== undefined) return oneHanded[1];
+  }
+
+  return Math.max(...levels, 0);
 }
 
 interface SeasonalItemModifierRule {

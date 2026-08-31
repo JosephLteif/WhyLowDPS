@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import ComboSummary from '../components/ComboSummary';
 import ErrorAlert from '../components/ErrorAlert';
+import SimulationLaunchButton from '../components/SimulationLaunchButton';
 import { useSimContext } from '../components/SimContext';
 import SimReturnNotice from '../components/shared/SimReturnNotice';
 import ToggleOptionCard from '../components/shared/ToggleOptionCard';
@@ -755,7 +756,7 @@ export default function DropFinderPage() {
   }, [drops, selected]);
 
   const {
-    submit: handleSubmit,
+    submit,
     submitting,
     error,
     buttonLabel,
@@ -779,6 +780,10 @@ export default function DropFinderPage() {
       }),
     },
   });
+
+  const handleSubmit = useCallback((threadsOverride?: number) => {
+    void submit({ threadsOverride });
+  }, [submit]);
 
   const submitLabel = !hasCharacter
     ? 'Paste SimC export to simulate'
@@ -1133,11 +1138,11 @@ export default function DropFinderPage() {
           <ErrorAlert message={error} />
 
           <div className="mobile-safe-bottom sticky bottom-0 z-50 -mx-4 bg-gradient-to-t from-[#111] via-[#111] to-transparent px-4 pb-4 pt-6 sm:-mx-6 sm:px-6">
-            <button
-              onClick={handleSubmit}
-              data-tour="drop-finder-submit"
-              disabled={submitting || selected.size === 0 || !hasCharacter}
-              className="btn-primary flex w-full items-center justify-center gap-2 py-3 text-sm"
+            <SimulationLaunchButton
+              onSubmit={handleSubmit}
+              dataTour="drop-finder-submit"
+              submitting={submitting}
+              disabled={selected.size === 0 || !hasCharacter}
             >
               {submitting ? (
                 <>
@@ -1147,7 +1152,7 @@ export default function DropFinderPage() {
               ) : (
                 submitLabel
               )}
-            </button>
+            </SimulationLaunchButton>
           </div>
         </>
       )}

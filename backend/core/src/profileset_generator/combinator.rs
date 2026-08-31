@@ -1,4 +1,4 @@
-use crate::types::class_data::{self, ARMOR_SLOTS, GEAR_SLOTS};
+use crate::types::class_data::{self, ARMOR_SLOTS, GEAR_SLOTS, UNIQUE_SLOT_PAIRS};
 use crate::types::{ItemOrigin, ResolvedItem};
 use crate::{game_data, profileset::validation};
 use serde_json::Value;
@@ -122,10 +122,16 @@ pub fn filter_valid_combos(
 ) -> Vec<HashMap<String, ResolvedItem>> {
     let mut valid = Vec::new();
     let mut seen = HashSet::new();
+    let item_limit_category_cache = build_item_limit_category_cache(slot_item_lists);
     for indices in all_combos {
         let gear_set =
             build_gear_set_from_combo(indices, varying_slots, option_lists, slot_item_lists, spec);
-        if is_valid_gear_set(&gear_set, spec, catalyst_charges) && !is_baseline_gear_set(&gear_set)
+        if is_valid_gear_set_with_cache(
+            &gear_set,
+            spec,
+            catalyst_charges,
+            &item_limit_category_cache,
+        ) && !is_baseline_gear_set(&gear_set)
         {
             let key = gear_set_identity_key(&gear_set);
             if seen.insert(key) {
@@ -134,6 +140,335 @@ pub fn filter_valid_combos(
         }
     }
     valid
+}
+
+fn visit_cartesian_product<F>(
+    index: usize,
+    indices: &mut Vec<usize>,
+    option_lists: &[&Vec<ResolvedItem>],
+    visit: &mut F,
+) -> bool
+where
+    F: FnMut(&[usize]) -> bool,
+{
+    if index == option_lists.len() {
+        return visit(indices);
+    }
+
+    for option_index in 0..option_lists[index].len() {
+        indices.push(option_index);
+        let should_stop = visit_cartesian_product(index + 1, indices, option_lists, visit);
+        indices.pop();
+        if should_stop {
+            return true;
+        }
+    }
+    false
+}
+
+pub struct LimitedComboResult {
+    pub valid_combos: Vec<HashMap<String, ResolvedItem>>,
+    pub exceeded_limit: bool,
+}
+
+pub fn filter_valid_combos_limited(
+    varying_slots: &[String],
+    option_lists: &[&Vec<ResolvedItem>],
+    slot_item_lists: &HashMap<String, Vec<ResolvedItem>>,
+    spec: &str,
+    catalyst_charges: Option<u32>,
+    max_valid_combos: usize,
+) -> LimitedComboResult {
+    let mut valid_combos = Vec::new();
+    let mut indices = Vec::with_capacity(option_lists.len());
+    let mut seen = HashSet::new();
+    let item_limit_category_cache = build_item_limit_category_cache(slot_item_lists);
+    let mut partial_state =
+        PartialComboState::new(varying_slots, slot_item_lists, &item_limit_category_cache);
+    let exceeded_limit = visit_cartesian_product_pruned(
+        0,
+        &mut indices,
+        varying_slots,
+        option_lists,
+        &item_limit_category_cache,
+        &mut partial_state,
+        &mut |indices| {
+            let gear_set = build_gear_set_from_combo(
+                indices,
+                varying_slots,
+                option_lists,
+                slot_item_lists,
+                spec,
+            );
+            if is_valid_gear_set_with_cache(
+                &gear_set,
+                spec,
+                catalyst_charges,
+                &item_limit_category_cache,
+            ) && !is_baseline_gear_set(&gear_set)
+            {
+                let key = gear_set_identity_key(&gear_set);
+                if seen.insert(key) {
+                    valid_combos.push(gear_set);
+                    return valid_combos.len() > max_valid_combos;
+                }
+            }
+            false
+        },
+    );
+
+    LimitedComboResult {
+        valid_combos,
+        exceeded_limit,
+    }
+}
+
+pub fn count_valid_combos(
+    varying_slots: &[String],
+    option_lists: &[&Vec<ResolvedItem>],
+    slot_item_lists: &HashMap<String, Vec<ResolvedItem>>,
+    spec: &str,
+    catalyst_charges: Option<u32>,
+) -> usize {
+    let mut count: usize = 0;
+    let mut indices = Vec::with_capacity(option_lists.len());
+    let mut seen = HashSet::new();
+    let item_limit_category_cache = build_item_limit_category_cache(slot_item_lists);
+    let mut partial_state =
+        PartialComboState::new(varying_slots, slot_item_lists, &item_limit_category_cache);
+    visit_cartesian_product_pruned(
+        0,
+        &mut indices,
+        varying_slots,
+        option_lists,
+        &item_limit_category_cache,
+        &mut partial_state,
+        &mut |indices| {
+            let gear_set = build_gear_set_from_combo(
+                indices,
+                varying_slots,
+                option_lists,
+                slot_item_lists,
+                spec,
+            );
+            if is_valid_gear_set_with_cache(
+                &gear_set,
+                spec,
+                catalyst_charges,
+                &item_limit_category_cache,
+            ) && !is_baseline_gear_set(&gear_set)
+            {
+                let key = gear_set_identity_key(&gear_set);
+                if seen.insert(key) {
+                    count = count.saturating_add(1);
+                }
+            }
+            false
+        },
+    );
+    count
+}
+
+pub fn has_item_limit_only_blockers(
+    varying_slots: &[String],
+    option_lists: &[&Vec<ResolvedItem>],
+    slot_item_lists: &HashMap<String, Vec<ResolvedItem>>,
+    spec: &str,
+    catalyst_charges: Option<u32>,
+) -> bool {
+    let mut indices = Vec::with_capacity(option_lists.len());
+    let item_limit_category_cache = build_item_limit_category_cache(slot_item_lists);
+    visit_cartesian_product(0, &mut indices, option_lists, &mut |indices| {
+        let gear_set =
+            build_gear_set_from_combo(indices, varying_slots, option_lists, slot_item_lists, spec);
+        let passes_non_limit_checks = validation::validate_unique_equipped(&gear_set)
+            && validation::validate_vault_constraint(&gear_set)
+            && validation::validate_weapon_constraint(&gear_set, spec)
+            && catalyst_charges
+                .is_none_or(|c| validation::validate_catalyst_constraint(&gear_set, c));
+        passes_non_limit_checks
+            && !validation::validate_item_limits_with_cache(&gear_set, &item_limit_category_cache)
+    })
+}
+
+fn build_item_limit_category_cache(
+    slot_item_lists: &HashMap<String, Vec<ResolvedItem>>,
+) -> HashMap<Vec<u64>, HashMap<u64, u64>> {
+    let mut cache = HashMap::new();
+    for items in slot_item_lists.values() {
+        for item in items {
+            cache
+                .entry(item.bonus_ids.clone())
+                .or_insert_with(|| game_data::get_item_limit_categories(&item.bonus_ids));
+        }
+    }
+    cache
+}
+
+struct PartialComboState<'a> {
+    items_by_slot: Vec<Option<&'a ResolvedItem>>,
+    category_counts: HashMap<u64, u64>,
+    category_limits: HashMap<u64, u64>,
+}
+
+impl<'a> PartialComboState<'a> {
+    fn new(
+        varying_slots: &[String],
+        slot_item_lists: &'a HashMap<String, Vec<ResolvedItem>>,
+        category_cache: &HashMap<Vec<u64>, HashMap<u64, u64>>,
+    ) -> Self {
+        let varying_slot_indexes: HashSet<usize> = varying_slots
+            .iter()
+            .filter_map(|slot| gear_slot_index(slot))
+            .collect();
+        let mut state = Self {
+            items_by_slot: vec![None; GEAR_SLOTS.len()],
+            category_counts: HashMap::new(),
+            category_limits: HashMap::new(),
+        };
+
+        for (slot_index, slot) in GEAR_SLOTS.iter().enumerate() {
+            if varying_slot_indexes.contains(&slot_index) || *slot == "off_hand" {
+                continue;
+            }
+            let Some(items) = slot_item_lists.get(*slot) else {
+                continue;
+            };
+            let item = items
+                .iter()
+                .find(|item| item.origin == ItemOrigin::Equipped)
+                .unwrap_or(&items[0]);
+            state.items_by_slot[slot_index] = Some(item);
+            state.add_item_limit_categories(item, category_cache);
+        }
+
+        state
+    }
+
+    fn set_item(
+        &mut self,
+        slot: &str,
+        item: &'a ResolvedItem,
+        category_cache: &HashMap<Vec<u64>, HashMap<u64, u64>>,
+    ) -> bool {
+        let Some(slot_index) = gear_slot_index(slot) else {
+            return true;
+        };
+        self.items_by_slot[slot_index] = Some(item);
+        if slot != "off_hand" {
+            self.add_item_limit_categories(item, category_cache);
+        }
+        !self.has_unique_conflict() && !self.has_item_limit_conflict()
+    }
+
+    fn unset_item(
+        &mut self,
+        slot: &str,
+        item: &'a ResolvedItem,
+        category_cache: &HashMap<Vec<u64>, HashMap<u64, u64>>,
+    ) {
+        let Some(slot_index) = gear_slot_index(slot) else {
+            return;
+        };
+        self.items_by_slot[slot_index] = None;
+        if slot != "off_hand" {
+            self.remove_item_limit_categories(item, category_cache);
+        }
+    }
+
+    fn add_item_limit_categories(
+        &mut self,
+        item: &ResolvedItem,
+        category_cache: &HashMap<Vec<u64>, HashMap<u64, u64>>,
+    ) {
+        if let Some(categories) = category_cache.get(&item.bonus_ids) {
+            for (&category_id, &limit) in categories {
+                *self.category_counts.entry(category_id).or_insert(0) += 1;
+                self.category_limits.insert(category_id, limit);
+            }
+        }
+    }
+
+    fn remove_item_limit_categories(
+        &mut self,
+        item: &ResolvedItem,
+        category_cache: &HashMap<Vec<u64>, HashMap<u64, u64>>,
+    ) {
+        if let Some(categories) = category_cache.get(&item.bonus_ids) {
+            for &category_id in categories.keys() {
+                let Some(count) = self.category_counts.get_mut(&category_id) else {
+                    continue;
+                };
+                *count = count.saturating_sub(1);
+                if *count == 0 {
+                    self.category_counts.remove(&category_id);
+                    self.category_limits.remove(&category_id);
+                }
+            }
+        }
+    }
+
+    fn has_unique_conflict(&self) -> bool {
+        UNIQUE_SLOT_PAIRS.iter().any(|(slot1, slot2)| {
+            let item1 = self.items_by_slot[gear_slot_index(slot1).unwrap()];
+            let item2 = self.items_by_slot[gear_slot_index(slot2).unwrap()];
+            item1.is_some_and(|item1| {
+                item2.is_some_and(|item2| item1.item_id != 0 && item1.item_id == item2.item_id)
+            })
+        })
+    }
+
+    fn has_item_limit_conflict(&self) -> bool {
+        self.category_counts.iter().any(|(category_id, count)| {
+            self.category_limits
+                .get(category_id)
+                .is_some_and(|limit| count > limit)
+        })
+    }
+}
+
+fn gear_slot_index(slot: &str) -> Option<usize> {
+    GEAR_SLOTS.iter().position(|candidate| *candidate == slot)
+}
+
+fn visit_cartesian_product_pruned<'a, F>(
+    index: usize,
+    indices: &mut Vec<usize>,
+    varying_slots: &[String],
+    option_lists: &[&'a Vec<ResolvedItem>],
+    category_cache: &HashMap<Vec<u64>, HashMap<u64, u64>>,
+    partial_state: &mut PartialComboState<'a>,
+    visit: &mut F,
+) -> bool
+where
+    F: FnMut(&[usize]) -> bool,
+{
+    if index == option_lists.len() {
+        return visit(indices);
+    }
+
+    let slot = &varying_slots[index];
+    for option_index in 0..option_lists[index].len() {
+        let item = &option_lists[index][option_index];
+        indices.push(option_index);
+        let can_descend = partial_state.set_item(slot, item, category_cache);
+        let should_stop = can_descend
+            && visit_cartesian_product_pruned(
+                index + 1,
+                indices,
+                varying_slots,
+                option_lists,
+                category_cache,
+                partial_state,
+                visit,
+            );
+        partial_state.unset_item(slot, item, category_cache);
+        indices.pop();
+        if should_stop {
+            return true;
+        }
+    }
+    false
 }
 
 pub fn build_gear_set_from_combo(
@@ -190,6 +525,20 @@ pub fn is_valid_gear_set(
         && validation::validate_vault_constraint(gs)
         && validation::validate_weapon_constraint(gs, spec)
         && validation::validate_item_limits(gs)
+        && validate_global_affix_bundle(gs)
+        && catalyst.is_none_or(|c| validation::validate_catalyst_constraint(gs, c))
+}
+
+fn is_valid_gear_set_with_cache(
+    gs: &HashMap<String, ResolvedItem>,
+    spec: &str,
+    catalyst: Option<u32>,
+    item_limit_category_cache: &HashMap<Vec<u64>, HashMap<u64, u64>>,
+) -> bool {
+    validation::validate_unique_equipped(gs)
+        && validation::validate_vault_constraint(gs)
+        && validation::validate_weapon_constraint(gs, spec)
+        && validation::validate_item_limits_with_cache(gs, item_limit_category_cache)
         && validate_global_affix_bundle(gs)
         && catalyst.is_none_or(|c| validation::validate_catalyst_constraint(gs, c))
 }
@@ -361,6 +710,8 @@ pub struct UpgradeDfsCtx<'a> {
     pub spent: HashMap<u64, u64>,
     pub current: Vec<(String, usize)>,
     pub retain_all: bool,
+    pub count_only: bool,
+    pub count: usize,
 }
 
 impl UpgradeDfsCtx<'_> {
@@ -373,6 +724,24 @@ impl UpgradeDfsCtx<'_> {
 
     pub fn dfs(&mut self, idx: usize) {
         if idx == self.slots.len() {
+            if self.count_only {
+                let is_baseline = self.current.iter().all(|(_, choice)| *choice == 0);
+                if self.retain_all {
+                    if !is_baseline {
+                        self.count = self.count.saturating_add(1);
+                    }
+                } else {
+                    let total: u64 = self.spent.values().sum();
+                    if total > self.best_spend {
+                        self.best_spend = total;
+                        self.count = 0;
+                    }
+                    if total == self.best_spend && !is_baseline {
+                        self.count = self.count.saturating_add(1);
+                    }
+                }
+                return;
+            }
             if self.retain_all {
                 self.retained.push(UpgradeCombo {
                     choices: self.current.clone(),
@@ -417,7 +786,7 @@ impl UpgradeDfsCtx<'_> {
                 let e = self.spent.entry(*cid).or_insert(0);
                 *e = e.saturating_sub(*amount);
             }
-            if self.retained.len() > self.limit * 2 {
+            if !self.count_only && self.retained.len() > self.limit * 2 {
                 return;
             }
         }
@@ -538,6 +907,72 @@ mod tests {
         let product = generate_cartesian_product(&options);
         assert_eq!(product.len(), 6);
         assert!(product.iter().all(|combo| combo.len() == 2));
+    }
+
+    #[test]
+    fn limited_filter_stops_after_valid_combo_limit() {
+        let head = vec![
+            make_item("h-eq", "head", 1, ItemOrigin::Equipped, 0, 0, ""),
+            make_item("h-alt", "head", 2, ItemOrigin::Bags, 0, 0, ""),
+            make_item("h-alt2", "head", 3, ItemOrigin::Bags, 0, 0, ""),
+        ];
+        let neck = vec![
+            make_item("n-eq", "neck", 10, ItemOrigin::Equipped, 0, 0, ""),
+            make_item("n-alt", "neck", 11, ItemOrigin::Bags, 0, 0, ""),
+            make_item("n-alt2", "neck", 12, ItemOrigin::Bags, 0, 0, ""),
+        ];
+        let slot_item_lists =
+            HashMap::from([("head".to_string(), head), ("neck".to_string(), neck)]);
+        let varying_slots = vec!["head".to_string(), "neck".to_string()];
+        let option_lists = vec![
+            slot_item_lists.get("head").unwrap(),
+            slot_item_lists.get("neck").unwrap(),
+        ];
+
+        let result = filter_valid_combos_limited(
+            &varying_slots,
+            &option_lists,
+            &slot_item_lists,
+            "arcane",
+            None,
+            2,
+        );
+
+        assert!(result.exceeded_limit);
+        assert_eq!(result.valid_combos.len(), 3);
+    }
+
+    #[test]
+    fn limited_filter_prunes_duplicate_unique_equipped_pairs() {
+        let finger1 = vec![
+            make_item("f1-eq", "finger1", 101, ItemOrigin::Equipped, 0, 0, ""),
+            make_item("f1-alt", "finger1", 201, ItemOrigin::Bags, 0, 0, ""),
+        ];
+        let finger2 = vec![
+            make_item("f2-eq", "finger2", 102, ItemOrigin::Equipped, 0, 0, ""),
+            make_item("f2-alt", "finger2", 201, ItemOrigin::Bags, 0, 0, ""),
+        ];
+        let slot_item_lists = HashMap::from([
+            ("finger1".to_string(), finger1),
+            ("finger2".to_string(), finger2),
+        ]);
+        let varying_slots = vec!["finger1".to_string(), "finger2".to_string()];
+        let option_lists = vec![
+            slot_item_lists.get("finger1").unwrap(),
+            slot_item_lists.get("finger2").unwrap(),
+        ];
+
+        let result = filter_valid_combos_limited(
+            &varying_slots,
+            &option_lists,
+            &slot_item_lists,
+            "arcane",
+            None,
+            10,
+        );
+
+        assert!(!result.exceeded_limit);
+        assert_eq!(result.valid_combos.len(), 2);
     }
 
     #[test]
@@ -687,6 +1122,8 @@ mod tests {
             spent: HashMap::new(),
             current: Vec::new(),
             retain_all,
+            count_only: false,
+            count: 0,
         };
         ctx.dfs(0);
         ctx

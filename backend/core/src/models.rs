@@ -66,6 +66,12 @@ pub struct Job {
     pub progress_stage: Option<String>,
     pub progress_detail: Option<String>,
     pub stages_completed: Vec<String>,
+    #[serde(default)]
+    pub stage_timings: Vec<StageTiming>,
+    #[serde(default)]
+    pub active_stage_elapsed: f64,
+    #[serde(default, skip_serializing)]
+    pub active_stage_started_at: Option<String>,
     pub iterations: u32,
     pub fight_style: String,
     pub target_error: f64,
@@ -77,6 +83,12 @@ pub struct Job {
     pub linked_realm: Option<String>,
     pub linked_name: Option<String>,
     pub pinned: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct StageTiming {
+    pub name: String,
+    pub elapsed: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -235,6 +247,9 @@ impl Job {
             progress_stage: None,
             progress_detail: None,
             stages_completed: Vec::new(),
+            stage_timings: Vec::new(),
+            active_stage_elapsed: 0.0,
+            active_stage_started_at: None,
             iterations,
             fight_style,
             target_error,
@@ -247,6 +262,84 @@ impl Job {
             linked_name: None,
             pinned: false,
         }
+    }
+
+    pub fn update_stage_timing(&mut self, stage: &str) {
+        let now = chrono::Utc::now();
+        if self.progress_stage.as_deref() != Some(stage) {
+            self.finish_stage_timing(now, true);
+            self.progress_stage = Some(stage.to_string());
+            self.active_stage_elapsed = 0.0;
+            self.active_stage_started_at = None;
+        }
+
+        if self.status == JobStatus::Running && self.active_stage_started_at.is_none() {
+            self.active_stage_started_at = Some(now.to_rfc3339());
+        }
+    }
+
+    pub fn transition_stage_timing(&mut self, from: &JobStatus, to: &JobStatus) {
+        let now = chrono::Utc::now();
+        if matches!(
+            to,
+            JobStatus::Done | JobStatus::Failed | JobStatus::Cancelled
+        ) {
+            self.finish_stage_timing(now, true);
+        } else if *from == JobStatus::Running && *to != JobStatus::Running {
+            self.accumulate_stage_timing(now);
+        } else if *from == JobStatus::Paused
+            && *to == JobStatus::Running
+            && self.active_stage_started_at.is_none()
+            && self.progress_stage.is_some()
+        {
+            self.active_stage_started_at = Some(now.to_rfc3339());
+        }
+    }
+
+    pub fn complete_stage_timing(&mut self) {
+        self.finish_stage_timing(chrono::Utc::now(), true);
+    }
+
+    pub fn active_stage_elapsed_seconds(&self) -> f64 {
+        let live_elapsed = self
+            .active_stage_started_at
+            .as_deref()
+            .and_then(|started| chrono::DateTime::parse_from_rfc3339(started).ok())
+            .map(|started| {
+                let elapsed =
+                    chrono::Utc::now().signed_duration_since(started.with_timezone(&chrono::Utc));
+                elapsed.num_milliseconds().max(0) as f64 / 1000.0
+            })
+            .unwrap_or(0.0);
+        (self.active_stage_elapsed + live_elapsed).max(0.0)
+    }
+
+    fn accumulate_stage_timing(&mut self, now: chrono::DateTime<chrono::Utc>) {
+        if let Some(started) = self.active_stage_started_at.take() {
+            if let Ok(started) = chrono::DateTime::parse_from_rfc3339(&started) {
+                let elapsed = now
+                    .signed_duration_since(started.with_timezone(&chrono::Utc))
+                    .num_milliseconds()
+                    .max(0) as f64
+                    / 1000.0;
+                self.active_stage_elapsed += elapsed;
+            }
+        }
+    }
+
+    fn finish_stage_timing(&mut self, now: chrono::DateTime<chrono::Utc>, record: bool) {
+        let had_active_timing =
+            self.active_stage_started_at.is_some() || self.active_stage_elapsed > 0.0;
+        self.accumulate_stage_timing(now);
+        if record && had_active_timing {
+            if let Some(name) = self.progress_stage.as_deref() {
+                self.stage_timings.push(StageTiming {
+                    name: name.to_string(),
+                    elapsed: self.active_stage_elapsed.max(0.0),
+                });
+            }
+        }
+        self.active_stage_elapsed = 0.0;
     }
 
     pub fn estimate_size(&self) -> u64 {
@@ -443,6 +536,38 @@ mod tests {
         assert!(serde_json::from_str::<JobStatus>("\"unknown\"").is_err());
         assert!(serde_json::from_str::<JobStatus>("\"Pending\"").is_err());
         assert!(serde_json::from_str::<JobStatus>("\"DONE\"").is_err());
+    }
+
+    #[test]
+    fn stage_timing_survives_pause_and_reopen_without_resetting() {
+        let mut job = Job::new(
+            "mage=\"Tester\"\n".to_string(),
+            "top_gear".to_string(),
+            1000,
+            "Patchwerk".to_string(),
+            0.2,
+        );
+        job.status = JobStatus::Running;
+        job.update_stage_timing("Stage 1 of 3");
+        job.active_stage_started_at =
+            Some((chrono::Utc::now() - chrono::Duration::seconds(5)).to_rfc3339());
+
+        let elapsed_before_pause = job.active_stage_elapsed_seconds();
+        assert!(elapsed_before_pause >= 4.0);
+
+        job.transition_stage_timing(&JobStatus::Running, &JobStatus::Paused);
+        assert!(job.active_stage_elapsed_seconds() >= 4.0);
+        assert!(job.active_stage_started_at.is_none());
+
+        let reopened = job.clone();
+        assert!(reopened.active_stage_elapsed_seconds() >= 4.0);
+
+        job.transition_stage_timing(&JobStatus::Paused, &JobStatus::Running);
+        assert!(job.active_stage_started_at.is_some());
+        job.complete_stage_timing();
+        assert_eq!(job.stage_timings.len(), 1);
+        assert_eq!(job.stage_timings[0].name, "Stage 1 of 3");
+        assert!(job.stage_timings[0].elapsed >= 4.0);
     }
 
     #[test]

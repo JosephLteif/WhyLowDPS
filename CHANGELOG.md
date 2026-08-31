@@ -8,7 +8,28 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ### Changed
 
+- Simulation launch controls now include one-time Balanced, Performance, and Maximum CPU thread overrides while the main launch button continues to use the saved default.
+- Simulation settings now support configurable total and no-output timeouts, defaulting to a two-hour total runtime and ten minutes without output.
+- Settings are now grouped into focused Health, Simulation, Defaults, Application, Integrations, Data Cache, Updates, and About tabs; application behavior controls are separated from simulation controls and the redundant Quick repairs panel is removed.
+- Top Gear rankings now use fixed-size pages instead of rendering every combination at once, reducing WebView memory use for large result sets.
+- Top Gear now offers an Eligible quick selection that keeps equipped items and selects only alternatives valid for the active character, specialization, and item-level rules.
+- Dashboard Quick Links now include popular WoW tools and support custom http:// or https:// URLs with selectable icons, persisted locally and opened in a new tab.
+- Recent SimC exports in the History list now persist locally across reloads and navigation, while remaining limited to the 20 most recent profiles and clearable from the profile dropdown.
+- Upgrade Trinkets now default to current-season raid and dungeon sources, with an opt-in setting for old-season and Turbulent trinkets; excluded trinkets are removed before simulation combinations are generated.
+- Top Gear and Upgrade Compare now calculate the full combination count before launch, keep simulation start disabled while it is computing, and explain when the exact total exceeds the configured limit.
+- Active simulations now remain monitorable across pages with a minimizable progress indicator, while the duplicate indicator is hidden on the simulation's own progress or result page; completion notifications still link back to the result.
+- Simulation stage timers now use persisted job timing across navigation, reloads, and pause/resume, and the SimC total timeout is now two hours while the no-output timeout remains 10 minutes.
 - The release pipeline now separates automated developer builds from stable release promotion for a cleaner, more reliable release cycle.
+
+### Fixed
+
+- The desktop app now persists the Light or Full Mode choice through updates and preserves completed guided tours for returning users.
+- Consumable picker labels now select their option directly; the separate, clearly labeled external-link button opens Wowhead.
+- Item bonus-stat badges now prioritize the equipped item's bonus IDs, preventing stale cached data from showing an incorrect stat such as Avoidance instead of Leech.
+- Rerunning a saved simulation now preserves its exact SimC input, options, item data, and specialized simulation metadata, then opens the new simulation's running page immediately instead of running only in the background.
+- Trinket heatmaps now use the selected target item level for fallback drops, so Myth 6/6 no longer simulates raw 108 item-level variants alongside 334 candidates.
+- Top Gear now keeps the combination count accurate when selecting all available gear items.
+- SimC exports restored or supplied outside the profile selector now automatically select the matching saved or recent profile.
 
 ## [4.1.1] - 2026-08-25
 

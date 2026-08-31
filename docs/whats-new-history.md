@@ -8,12 +8,119 @@ Add new work under the `Unreleased` section. The release workflow promotes that 
 
 ### Improvements
 
+#### Override simulation performance per launch
+
+Simulation launch controls now include a performance menu for one-time CPU thread overrides, while the main launch button continues to use the saved default.
+
+- Choose Balanced, Performance, or Maximum for an individual simulation without changing Settings.
+
+#### Configure simulation timeouts
+
+Simulation settings now let you control how long a simulation may run and how long it may go without producing output, with a two-hour total timeout by default.
+
+- Adjust the total and no-output timeouts from Settings > Simulation; values are saved with your account.
+
+#### Organize settings by purpose
+
+Settings are now grouped into focused tabs so simulation controls, default options, and application behavior are easier to find.
+
+- Default Options has its own tab, while Clipboard Import, Close Behavior, and Share over LAN are grouped under Application.
+- Removed the redundant Quick repairs panel in favor of the tab navigation.
+
+#### Paginate large Top Gear result lists
+
+Top Gear rankings now use fixed-size pages instead of mounting every combination in one list, keeping large result sets more responsive and reducing WebView memory use.
+
+- Use Previous and Next to browse results; only the current page is rendered.
+
+#### Select only eligible Top Gear items
+
+Top Gear now offers an Eligible quick selection that keeps equipped items and selects only alternatives valid for the active character, specialization, and item-level rules.
+
+- Use Eligible in the Top Gear quick actions to leave off-spec and low-level alternatives unselected.
+
+#### Keep WoW tools and custom links one click away
+
+The dashboard Quick Links widget now includes popular WoW tools such as Wowhead, Raidbots, WoWAnalyzer, Warcraft Logs, and Raider.IO, with clear icons and new-tab links.
+
+- Add custom http:// or https:// URLs from the Quick Links editor.
+- Choose an icon for each custom link from the built-in icon picker; links are saved locally with the rest of the dashboard preferences.
+
+#### Persist recent SimC profile history
+
+Recent SimC exports in the History list now persist locally, so they remain available after reloading the app or navigating between SimC pages.
+
+- History remains limited to the 20 most recent exports and can still be cleared from the profile dropdown.
+
+#### Filter legacy trinkets from Upgrade simulations
+
+Upgrade Trinkets now defaults to current-season raid and dungeon sources, with an opt-in setting for old-season and Turbulent trinkets when those items are still relevant.
+
+- Current-season filtering is applied before simulation combinations are generated, so excluded trinkets are not simulated.
+- The setting can be enabled from the setup form or from the results view.
+
+#### See the exact combination count before launching
+
+Top Gear and Upgrade Compare now finish calculating the full combination count before a simulation can start, and explain clearly when the total is above the configured launch limit.
+
+- The count continues past the configured limit so the exact total is shown.
+- Simulation launch stays disabled while the count is computing or above the limit.
+- Over-limit counts show the configured maximum and why the simulation cannot start.
+
+#### Keep simulation progress visible across pages
+
+Active simulations now remain easy to monitor after navigating to another page, with a compact progress card and a completion notification when the result is ready.
+
+- The activity card appears on other pages and can be minimized to a small bottom-right indicator.
+- The duplicate activity card is hidden while viewing that simulation's own progress or result page.
+
+#### Keep long simulations and stage timing accurate
+
+Simulation stage timers now use the job's persisted runtime timing, so leaving and reopening a simulation no longer resets the current stage clock. Longer simulations also have more time to finish before the total timeout is reached.
+
+- Stage timing remains accurate through navigation, reloads, and pause/resume.
+- The SimC total timeout is now two hours while the no-output timeout remains 10 minutes.
+
 #### Rework the release pipeline
 
 The release pipeline now separates automated developer builds from stable release promotion for a cleaner, more reliable release cycle.
 
 - Pushes to `dev` publish the tested moving developer release.
 - Stable releases can promote the tested developer build from the Release workflow.
+
+### Bug fixes
+
+#### Keep Full Mode after desktop updates
+
+The desktop app now keeps your Light or Full Mode choice after an update, so returning players are not sent through the tour again.
+
+#### Select consumables without opening a web page
+
+Consumable choices now select directly when you click their labels, while the Wowhead link is a separate, clearly marked action.
+
+#### Show the item's actual bonus stat
+
+Item badges now prioritize the equipped item's bonus IDs, so bonuses such as Leech no longer appear as a stale or incorrect stat.
+
+#### Rerun simulations with their original setup
+
+Rerunning a saved simulation now reuses its exact SimC input, options, item data, and specialized simulation metadata, so reruns no longer start with an empty item selection.
+
+- The new simulation opens on its running page immediately, keeping progress visible instead of running only in the background.
+
+#### Select restored SimC profiles automatically
+
+SimC exports restored or supplied outside the profile selector now automatically select the matching saved or recent profile instead of leaving the selector blank.
+
+#### Use the selected target item level for trinket candidates
+
+Trinket heatmaps now apply the selected target item level to fallback drops, preventing base-level variants from being simulated alongside the selected Myth upgrade level.
+
+- Myth 6/6 selections no longer add raw 108 item-level variants to a 334 target simulation.
+
+#### Show accurate Top Gear combination counts
+
+Selecting all available gear items now keeps the selected item identities aligned with the resolved gear data, so the combination count no longer remains at zero during the selection update.
 
 ## v4.1.1 — 2026-08-25 — Release notes for v4.1.1
 

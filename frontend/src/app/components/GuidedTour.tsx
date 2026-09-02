@@ -333,6 +333,14 @@ export const GUIDED_TOURS: GuidedTourDefinition[] = [
       },
       ...SHARED_SIM_SETUP_STEPS,
       {
+        id: 'upgrade-plan',
+        target: 'upgrade-plan',
+        title: 'Save owned upgrades to your roadmap',
+        description:
+          'Save owned upgrade targets to your shared Wishlist roadmap, then return here whenever you want to simulate crest spending.',
+        placement: 'top',
+      },
+      {
         id: 'upgrade-mode',
         target: 'upgrade-mode',
         title: 'Choose how much to consider',

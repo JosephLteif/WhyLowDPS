@@ -18,6 +18,8 @@ mod game_data_handlers;
 #[cfg(feature = "web")]
 mod helpers;
 #[cfg(feature = "web")]
+mod integrations;
+#[cfg(feature = "web")]
 mod job_handlers;
 #[cfg(feature = "web")]
 mod lan_access;
@@ -377,6 +379,13 @@ mod tests {
     }
 
     #[test]
+    fn config_mutations_are_admin_security_paths_but_reads_are_not() {
+        assert!(!admin_security_path("/api/config", &Method::GET));
+        assert!(admin_security_path("/api/config", &Method::POST));
+        assert!(admin_security_path("/api/config", &Method::PUT));
+    }
+
+    #[test]
     fn static_cache_policy_matches_directly_served_frontend_assets() {
         assert_eq!(
             static_cache_control("/_next/static/chunks/app.js"),
@@ -658,8 +667,14 @@ mod tests {
     async fn config_handlers_read_and_update_max_jobs() {
         let store = test_store();
 
-        let update =
-            update_config(web::Json(UpdateConfig { max_jobs: Some(7) }), store.clone()).await;
+        let update = update_config(
+            web::Json(UpdateConfig {
+                max_jobs: Some(7),
+                max_parallel_jobs: None,
+            }),
+            store.clone(),
+        )
+        .await;
         assert_eq!(update.status(), 200);
 
         let config = get_config(store).await;
@@ -850,6 +865,7 @@ pub async fn start_with_storage_bind_options_and_simc_runtime(
 ) -> (actix_web::dev::Server, u16) {
     #[cfg(feature = "web")]
     {
+        crate::simc_runner::set_simulation_concurrency_limit(storage.get_max_parallel_jobs());
         let externally_reachable = !is_loopback_bind(bind_host);
         let lan_pairing = externally_reachable && security.lan_pairing;
         if externally_reachable
@@ -888,6 +904,7 @@ pub async fn start_with_storage_bind_options_and_simc_runtime(
         let bind_addr = format!("{}:{}", bind_host, port);
 
         let blizzard_state = web::Data::new(Arc::new(blizzard::BlizzardState::new()));
+        let integrations_state = web::Data::new(Arc::new(integrations::IntegrationState::new()));
 
         let bnet_redirect = format!("http://localhost:{}/api/auth/bnet/callback", port);
         let jwt_secret = auth_handlers::validate_jwt_secret(
@@ -914,6 +931,13 @@ pub async fn start_with_storage_bind_options_and_simc_runtime(
             bnet_redirect,
             jwt_secret,
         )));
+
+        helpers::recover_pending_jobs(
+            store_data.get_ref().clone(),
+            auth_state.get_ref().clone(),
+            simc_data.get_ref().clone(),
+            log_data.get_ref().clone(),
+        );
 
         let sync_state = web::Data::new(Arc::new(data_sync::DataSyncState::new()));
 
@@ -963,6 +987,7 @@ pub async fn start_with_storage_bind_options_and_simc_runtime(
                 .app_data(simc_data.clone())
                 .app_data(log_data.clone())
                 .app_data(blizzard_state.clone())
+                .app_data(integrations_state.clone())
                 .app_data(blizzard_credential_secrets.clone())
                 .app_data(auth_state.clone())
                 .app_data(auth_state_opt_data.clone());
@@ -1084,6 +1109,26 @@ pub async fn start_with_storage_bind_options_and_simc_runtime(
                     web::post().to(auth_handlers::test_blizzard_creds),
                 )
                 .route(
+                    "/api/integrations/settings",
+                    web::get().to(integrations::get_settings),
+                )
+                .route(
+                    "/api/integrations/settings",
+                    web::post().to(integrations::update_settings),
+                )
+                .route(
+                    "/api/integrations/warcraft-logs/credentials/test",
+                    web::post().to(integrations::test_warcraft_logs_credentials),
+                )
+                .route(
+                    "/api/integrations/warcraft-logs/credentials",
+                    web::post().to(integrations::save_warcraft_logs_credentials),
+                )
+                .route(
+                    "/api/integrations/warcraft-logs/credentials",
+                    web::delete().to(integrations::remove_warcraft_logs_credentials),
+                )
+                .route(
                     "/api/admin/users",
                     web::get().to(auth_handlers::list_hosted_users),
                 )
@@ -1094,6 +1139,18 @@ pub async fn start_with_storage_bind_options_and_simc_runtime(
                 .route(
                     "/api/admin/users/{id}",
                     web::patch().to(auth_handlers::update_hosted_user),
+                )
+                .route(
+                    "/api/admin/integrations/warcraft-logs",
+                    web::get().to(integrations::get_admin_warcraft_logs_credentials),
+                )
+                .route(
+                    "/api/admin/integrations/warcraft-logs",
+                    web::post().to(integrations::save_admin_warcraft_logs_credentials),
+                )
+                .route(
+                    "/api/admin/integrations/warcraft-logs",
+                    web::delete().to(integrations::remove_admin_warcraft_logs_credentials),
                 )
                 .route(
                     "/api/admin/docker-updates",
@@ -1210,6 +1267,10 @@ pub async fn start_with_storage_bind_options_and_simc_runtime(
                     web::post().to(job_handlers::cancel_sim),
                 )
                 .route(
+                    "/api/sim/{id}/run-next",
+                    web::post().to(job_handlers::run_next),
+                )
+                .route(
                     "/api/sim/{id}/pause",
                     web::post().to(job_handlers::pause_sim),
                 )
@@ -1284,6 +1345,14 @@ pub async fn start_with_storage_bind_options_and_simc_runtime(
                 .route(
                     "/api/blizzard/character/{realm}/{name}/encounters/raids",
                     web::get().to(blizzard::proxy_character_raid_encounters),
+                )
+                .route(
+                    "/api/integrations/raider-io/character/{region}/{realm}/{name}",
+                    web::get().to(integrations::get_raider_io_character),
+                )
+                .route(
+                    "/api/integrations/warcraft-logs/character/{region}/{realm}/{name}",
+                    web::get().to(integrations::get_warcraft_logs_character),
                 )
                 .route(
                     "/api/blizzard/mythic-keystone/dungeon/index",
@@ -1399,6 +1468,11 @@ pub async fn start_with_storage_bind_options_and_simc_runtime(
                     web::get().to(game_data_handlers::get_talent_tree),
                 )
                 .route("/api/sims", web::get().to(job_handlers::list_sims))
+                .route("/api/queue", web::get().to(job_handlers::get_queue))
+                .route(
+                    "/api/queue/reorder",
+                    web::post().to(job_handlers::reorder_queue),
+                )
                 .route("/api/config", web::get().to(get_config))
                 .route("/api/config", web::post().to(update_config))
                 .route(

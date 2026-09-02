@@ -6,6 +6,42 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ## [Unreleased]
 
+### Added
+
+- Character pages now support optional public Raider.IO and Warcraft Logs integrations: Raider.IO provides current-season Mythic+ scores, best runs, raid progression, attribution, and profile links, while Warcraft Logs provides latest-zone rankings, five dated recent reports, and per-boss parse, kill, amount, metric, and spec data.
+- Simulation queue management now supports a configurable parallel-job limit across desktop and private Docker hosting; Docker-hosted changes are restricted to administrators.
+- The global activity card now shows running and queued simulations, remains available on result pages, and supports cancellation.
+- The dashboard now shows a live Queued Sims count while simulations are in flight.
+- Wishlist and Upgrade Planner now share a character-scoped Gear Roadmap: Wishlist tracks items to obtain, while the roadmap tracks upgrades for owned items without duplicating the same list.
+- Drop Finder, Wishlist, and Upgrade Planner are grouped together with direct navigation and clearer guidance for moving an item from acquisition to upgrade planning.
+- Completed simulation results can now be exported as portable `.wldps` files, imported by picker or drag-and-drop, and opened directly by the desktop app through Windows file association.
+
+### Changed
+
+- Settings > Integrations now explains every Warcraft Logs credential field, shows the exact current redirect host and port, and applies personal, environment, and administrator-managed credential precedence without exposing secrets.
+- Queued simulations now clearly explain that SimC has not started, show the current queue position, and link directly to queue management instead of displaying misleading zero-progress details.
+- Result pages now place a clearer analysis section at the bottom with an estimated DPS distribution, percentile markers, confidence intervals, and uncertainty-aware comparison guidance.
+- Top Gear deltas now show whether their difference is meaningful, within simulation noise, or needs more data; stat plots include a baseline and stat weights show ranked relative values.
+- Result Insights starts collapsed by default so the primary result content stays focused until deeper analysis is requested.
+- Upgrade Trinket results now support searching specific trinkets or combinations, saving eligible pairs directly to the character's Wishlist, and showing the legacy-trinket filter only when it was enabled at launch.
+- Character detail pages now show profile, Mythic+, raid, vault, profession, and external-profile information in the Profile tab, with 15-minute visible-page refreshes that retain the last successful snapshot if a background refresh fails.
+- Character Mythic+ and Raiding tabs now consolidate external data into the canonical Blizzard cards: Raider.IO details, active-raid achievement milestones, scan freshness, attribution, and profile links appear inline without duplicate progression totals, while Warcraft Logs keeps its unique rankings, dated reports, and per-boss metadata.
+- The character Raiding tab now hides the generic Current expansion option and selects the latest concrete expansion by default, while keeping All expansions available for older progression.
+
+### Fixed
+
+- Warcraft Logs data now merges into Blizzard boss rows without replacing Blizzard data, preserves snapshots through provider failures and refreshes, and keeps real zero-kill bosses visible while hiding catalog-only trash placeholders.
+- Raider.IO raid achievements now request active raid slugs and filter against active Blizzard raids, preventing stale expansion entries such as legacy progression from appearing in the current-season card.
+- Character Raiding tabs now show current-season progression when active raid pools identify bosses by encounter ID instead of raid instance ID.
+
+## [5.0.1] - 2026-08-31
+
+### Fixed
+
+- Stable releases promoted from a developer build now synchronize the versioned changelog data and update `master` for GitHub Pages.
+
+## [5.0.0] - 2026-08-31
+
 ### Changed
 
 - Simulation launch controls now include one-time Balanced, Performance, and Maximum CPU thread overrides while the main launch button continues to use the saved default.

@@ -2,7 +2,7 @@
 
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, CircleAlert } from 'lucide-react';
+import { ChevronDown, CircleAlert, Download } from 'lucide-react';
 import DpsHeroCard from '../../components/DpsHeroCard';
 import type { GearItem } from '../../components/GearOverview';
 import GearOverview from '../../components/GearOverview';
@@ -17,6 +17,7 @@ import ExternalBuffMatrixChart from '../../components/ExternalBuffMatrixChart';
 import ConsumableMatrixChart from '../../components/ConsumableMatrixChart';
 import SimResultTalentsCard from '../../components/SimResultTalentsCard';
 import SimTimelineAnalyzer from '../../components/SimTimelineAnalyzer';
+import ResultInsights from '../../components/ResultInsights';
 import { calculateAverageIlevel } from '../../lib/ilevel';
 import CharacterLinkButton from '../../components/CharacterLinkButton';
 import { useAuth } from '../../components/AuthContext';
@@ -36,42 +37,25 @@ import { useWowheadTooltips } from '../../lib/useWowheadTooltips';
 import { useNotifications } from '../../components/shared/NotificationSystem';
 
 import { API_URL, fetchJson } from '../../lib/api';
-import { formatScenarioLabel, getScenarioSiblings, type ScenarioSibling } from '../../lib/scenario-siblings';
+import {
+  formatScenarioLabel,
+  getScenarioSiblings,
+  type ScenarioSibling,
+} from '../../lib/scenario-siblings';
 import { simResultHref } from '../../lib/routes';
 import { trackSimulations } from '../../lib/sim-tracking';
-import { getSimReturnTarget, resolveSimAgainNavigation, setSimReturnNotice } from '../../lib/sim-return';
+import {
+  getSimReturnTarget,
+  resolveSimAgainNavigation,
+  setSimReturnNotice,
+} from '../../lib/sim-return';
+import {
+  createSharedResultArtifact,
+  downloadSharedResultArtifact,
+  type SharedResultJob,
+} from '../../lib/shared-result';
 
-interface JobData {
-  id: string;
-  status: string;
-  sim_type?: string;
-  simc_input?: string;
-  options?: Record<string, unknown> | null;
-  created_at?: string;
-  progress: number;
-  progress_stage?: string;
-  progress_detail?: string;
-  stages_completed?: string[];
-  stage_timings?: Array<{ name: string; elapsed: number }>;
-  active_stage_elapsed?: number;
-  result: Record<string, unknown> | null;
-  error: string | null;
-  profilesets_completed?: number;
-  profilesets_total?: number;
-  cpu_pct?: number;
-  mem_bytes?: number;
-  cpu_cores?: number;
-  iterations?: number;
-  iterations_completed?: number;
-  fight_style?: string;
-  region?: string;
-  linked_region?: string;
-  linked_realm?: string;
-  linked_name?: string;
-  batch_id?: string | null;
-  pause_available?: boolean;
-  resume_available?: boolean;
-}
+type JobData = SharedResultJob;
 
 interface TimelinePoint {
   t: number;
@@ -93,7 +77,7 @@ function simTypeLabel(simType?: string): string {
         quick: 'Quick Sim',
         top_gear: 'Top Gear',
         droptimizer: 'Drop Finder',
-        upgrade_compare: 'Upgrade Compare',
+        upgrade_compare: 'Crest Upgrades',
       } as Record<string, string>
     )[simType || ''] ||
     simType ||
@@ -370,9 +354,9 @@ function CollapsibleSection({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between border-b border-border/60 bg-white/[0.01] px-5 py-3.5 text-left transition-colors hover:bg-white/[0.03]"
+        className="border-border/60 flex w-full items-center justify-between border-b bg-white/[0.01] px-5 py-3.5 text-left transition-colors hover:bg-white/[0.03]"
       >
-        <span className="text-xs font-medium uppercase tracking-widest text-muted">{title}</span>
+        <span className="text-muted text-xs font-medium tracking-widest uppercase">{title}</span>
         <ChevronDown
           className={`h-3.5 w-3.5 text-zinc-500 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
           strokeWidth={2}
@@ -383,17 +367,22 @@ function CollapsibleSection({
   );
 }
 
-export default function SimResultClient() {
+interface SimResultClientProps {
+  initialJob?: JobData;
+  shared?: boolean;
+}
+
+export default function SimResultClient({ initialJob, shared = false }: SimResultClientProps = {}) {
   const router = useRouter();
   const { lightMode } = useAuth();
   const { notify } = useNotifications();
   const params = useParams();
   const searchParams = useSearchParams();
-  const paramId = params.id as string;
+  const paramId = (params.id as string | undefined) || '';
   const queryId = (searchParams.get('id') || '').trim();
 
   // Robust ID resolution from params or URL
-  let id = queryId || paramId;
+  let id = queryId || paramId || initialJob?.id || '';
   if ((!paramId || paramId === '_') && typeof window !== 'undefined') {
     const query = new URLSearchParams(window.location.search);
     const queryIdFromUrl = (query.get('id') || '').trim();
@@ -408,9 +397,9 @@ export default function SimResultClient() {
       id = foundId;
     }
   }
-  const [activeScenarioId, setActiveScenarioId] = useState(id);
+  const [activeScenarioId, setActiveScenarioId] = useState(initialJob?.id || id);
 
-  const [job, setJob] = useState<JobData | null>(null);
+  const [job, setJob] = useState<JobData | null>(initialJob || null);
   const [fetchError, setFetchError] = useState('');
   const [logLines, setLogLines] = useState<string[]>([]);
   const [showLogs, setShowLogs] = useState(true);
@@ -426,10 +415,11 @@ export default function SimResultClient() {
   const previousStatusRef = useRef<string | null>(null);
 
   useEffect(() => {
+    if (shared) return;
     if (id && id !== '_' && id !== activeScenarioId) {
       setActiveScenarioId(id);
     }
-  }, [id, activeScenarioId]);
+  }, [activeScenarioId, id, shared]);
 
   useEffect(() => {
     previousStatusRef.current = null;
@@ -575,10 +565,18 @@ export default function SimResultClient() {
   useWowheadTooltips([activeBuffs, job]);
 
   useEffect(() => {
+    if (shared) {
+      setSiblings([]);
+      return;
+    }
     setSiblings(getScenarioSiblings());
-  }, []);
+  }, [shared]);
 
   useEffect(() => {
+    if (shared) {
+      setLiveRelatedScenarios([]);
+      return;
+    }
     let active = true;
 
     async function loadLiveRelatedScenarios() {
@@ -631,7 +629,7 @@ export default function SimResultClient() {
     return () => {
       active = false;
     };
-  }, [activeScenarioId, job?.id, job?.batch_id, siblings]);
+  }, [activeScenarioId, job?.batch_id, job?.id, shared, siblings]);
 
   const toolbarScenarios = useMemo(() => {
     const base = siblings || [];
@@ -668,6 +666,7 @@ export default function SimResultClient() {
   }, []);
 
   useEffect(() => {
+    if (shared) return;
     if (toolbarScenarios.length === 0) return;
     const siblingList = toolbarScenarios;
     const maxPolledSiblings = 40;
@@ -707,9 +706,10 @@ export default function SimResultClient() {
       active = false;
       clearTimeout(timer);
     };
-  }, [toolbarScenarios, activeScenarioId, job?.status]);
+  }, [activeScenarioId, job?.status, shared, toolbarScenarios]);
 
   useEffect(() => {
+    if (shared) return;
     console.log('[SimResult] Initializing with ID:', activeScenarioId);
     if (!activeScenarioId || activeScenarioId === '_') return;
     setFetchError('');
@@ -770,11 +770,12 @@ export default function SimResultClient() {
       active = false;
       clearTimeout(timer);
     };
-  }, [activeScenarioId, notify, router]);
+  }, [activeScenarioId, notify, router, shared]);
 
   // Keep polling while active so the stats card can show the current phase ETA
   // even when the log console is collapsed.
   useEffect(() => {
+    if (shared) return;
     if (!activeScenarioId || activeScenarioId === '_') return;
     if (job?.status !== 'pending' && job?.status !== 'running') return;
     let active = true;
@@ -802,9 +803,10 @@ export default function SimResultClient() {
       active = false;
       clearTimeout(timer);
     };
-  }, [activeScenarioId, job?.status]);
+  }, [activeScenarioId, job?.status, shared]);
 
   useEffect(() => {
+    if (shared) return;
     if (!activeScenarioId || activeScenarioId === '_' || !job?.result) return;
     if (job.status !== 'done') return;
     if (job.result.timeline || job.result.apl_analysis) return;
@@ -836,7 +838,7 @@ export default function SimResultClient() {
     return () => {
       active = false;
     };
-  }, [activeScenarioId, job]);
+  }, [activeScenarioId, job, shared]);
 
   const handleToggleLogs = useCallback(() => setShowLogs((v) => !v), []);
   const scenarioStatusTone = useCallback((status: string, isCurrent: boolean): string => {
@@ -863,6 +865,28 @@ export default function SimResultClient() {
     }
     router.push(getSimTypeFallbackUrl(job?.sim_type));
   }, [getCurrentSimId, getSimTypeFallbackUrl, job?.sim_type, router]);
+
+  const handleShareResult = useCallback(() => {
+    if (!job?.result) return;
+    try {
+      const downloaded = downloadSharedResultArtifact(createSharedResultArtifact(job));
+      if (downloaded) {
+        notify({
+          title: 'Result file downloaded',
+          description: 'Share the .wldps file with another WhyLowDps user.',
+          variant: 'success',
+          durationMs: 6000,
+        });
+      }
+    } catch (error) {
+      notify({
+        title: 'Could not export result',
+        description: error instanceof Error ? error.message : 'The result could not be exported.',
+        variant: 'error',
+        durationMs: 7000,
+      });
+    }
+  }, [job, notify]);
 
   const handleRerunInput = useCallback(async () => {
     const sourceJobId = job?.id || activeScenarioId;
@@ -936,7 +960,7 @@ export default function SimResultClient() {
   if (!job) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
-        <div className="h-10 w-10 animate-spin rounded-full border-2 border-zinc-800 border-t-gold" />
+        <div className="border-t-gold h-10 w-10 animate-spin rounded-full border-2 border-zinc-800" />
       </div>
     );
   }
@@ -953,7 +977,7 @@ export default function SimResultClient() {
     return (
       <div className="card border-red-500/20 bg-red-500/[0.03] p-6">
         <p className="mb-2 text-sm font-semibold text-red-400">Simulation Failed</p>
-        <p className="whitespace-pre-wrap font-mono text-[13px] leading-relaxed text-red-400/60">
+        <p className="font-mono text-[13px] leading-relaxed whitespace-pre-wrap text-red-400/60">
           {job.error || 'Unknown error'}
         </p>
       </div>
@@ -963,12 +987,12 @@ export default function SimResultClient() {
   const scenarioToolbar = (
     <div className="sticky top-[var(--app-header-height)] z-40 flex flex-col items-stretch gap-2 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
       {toolbarScenarios.length > 1 ? (
-        <div className="w-full overflow-x-auto rounded-xl border border-border/70 bg-surface/90 p-3 shadow-lg backdrop-blur sm:w-auto">
+        <div className="border-border/70 bg-surface/90 w-full overflow-x-auto rounded-xl border p-3 shadow-lg backdrop-blur sm:w-auto">
           <div className="flex min-w-max items-center gap-2">
-            <span className="shrink-0 text-[13px] uppercase tracking-wider text-muted">
+            <span className="text-muted shrink-0 text-[13px] tracking-wider uppercase">
               Scenarios
             </span>
-            <span className="h-4 w-px shrink-0 bg-border" />
+            <span className="bg-border h-4 w-px shrink-0" />
             {toolbarScenarios.map((s) => {
               const isCurrent = s.id === activeScenarioId;
               const status = siblingStatuses[s.id] || (isCurrent ? job.status : 'pending');
@@ -1010,35 +1034,51 @@ export default function SimResultClient() {
         <div />
       )}
       {job.status === 'done' ? (
-        <div className="flex w-full flex-wrap items-center gap-2 rounded-2xl border border-border bg-surface-2/90 px-3 py-2 shadow-[0_10px_30px_rgba(0,0,0,0.35)] backdrop-blur-md sm:w-auto sm:gap-3">
-          <button
-            type="button"
-            onClick={handleSimAgain}
-            className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl border border-emerald-400/65 bg-emerald-500/30 px-4 py-2.5 text-[15px] font-semibold text-emerald-50 transition-colors hover:bg-emerald-500/45 hover:text-white sm:flex-none"
-          >
-            Sim Again
-          </button>
-          <button
-            type="button"
-            onClick={handleRerunInput}
-            disabled={!job.simc_input || rerunning}
-            className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl border border-white/15 bg-white/[0.05] px-3 py-2.5 text-sm font-semibold text-zinc-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none"
-          >
-            {rerunning ? 'Rerunning…' : 'Rerun This Input'}
-          </button>
-          {!lightMode && (
-            <CharacterLinkButton
-              jobId={activeScenarioId}
-              currentLinkedName={job.linked_name}
-              currentLinkedRealm={job.linked_realm}
-              currentLinkedRegion={job.linked_region}
-            />
-          )}
-          {rerunError && (
-            <span role="alert" className="text-xs text-red-300">
-              {rerunError}
+        <div className="border-border bg-surface-2/90 flex w-full flex-wrap items-center gap-2 rounded-2xl border px-3 py-2 shadow-[0_10px_30px_rgba(0,0,0,0.35)] backdrop-blur-md sm:w-auto sm:gap-3">
+          {shared ? (
+            <span className="px-2 text-xs font-medium text-sky-200/80">
+              Shared result · read-only
             </span>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={handleSimAgain}
+                className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl border border-emerald-400/65 bg-emerald-500/30 px-4 py-2.5 text-[15px] font-semibold text-emerald-50 transition-colors hover:bg-emerald-500/45 hover:text-white sm:flex-none"
+              >
+                Sim Again
+              </button>
+              <button
+                type="button"
+                onClick={handleRerunInput}
+                disabled={!job.simc_input || rerunning}
+                className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl border border-white/15 bg-white/[0.05] px-3 py-2.5 text-sm font-semibold text-zinc-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none"
+              >
+                {rerunning ? 'Rerunning…' : 'Rerun This Input'}
+              </button>
+              {!lightMode && (
+                <CharacterLinkButton
+                  jobId={activeScenarioId}
+                  currentLinkedName={job.linked_name}
+                  currentLinkedRealm={job.linked_realm}
+                  currentLinkedRegion={job.linked_region}
+                />
+              )}
+              {rerunError && (
+                <span role="alert" className="text-xs text-red-300">
+                  {rerunError}
+                </span>
+              )}
+            </>
           )}
+          <button
+            type="button"
+            onClick={handleShareResult}
+            className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-sky-400/40 bg-sky-500/15 px-3 py-2.5 text-sm font-semibold text-sky-100 transition-colors hover:bg-sky-500/25 sm:flex-none"
+          >
+            <Download className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+            {shared ? 'Save result file' : 'Share result file'}
+          </button>
         </div>
       ) : (
         <div />
@@ -1053,6 +1093,7 @@ export default function SimResultClient() {
         <SimStatus
           status={job.status}
           progress={job.progress}
+          queuePosition={job.queue_position}
           progressStage={job.progress_stage}
           progressDetail={job.progress_detail}
           createdAt={job.created_at}
@@ -1086,7 +1127,7 @@ export default function SimResultClient() {
   }
 
   if (!job.result) {
-    return <p className="text-sm text-muted">No result data available.</p>;
+    return <p className="text-muted text-sm">No result data available.</p>;
   }
 
   const hasTopGearLikeResults =
@@ -1150,6 +1191,10 @@ export default function SimResultClient() {
         <TrinketTierHeatmap
           baseDps={(r.base_dps as number) || 0}
           elapsedSeconds={(r.elapsed_time_seconds as number) || 0}
+          allowLegacyToggle={job.options?.heatmap_include_legacy_trinkets === true}
+          playerName={r.player_name as string | undefined}
+          playerRealm={r.realm as string | undefined}
+          playerRegion={r.region as string | undefined}
           results={
             (r.results as Array<{ name: string; dps: number; delta: number; items: any[] }>) || []
           }
@@ -1208,6 +1253,8 @@ export default function SimResultClient() {
           {r.stat_plots ? (
             <StatPlotChart
               statPlots={r.stat_plots as Record<string, Array<{ delta: number; dps: number }>>}
+              dpsError={r.dps_error as number | undefined}
+              iterations={r.iterations as number | undefined}
             />
           ) : null}
           {r.stat_weights ? (
@@ -1232,6 +1279,13 @@ export default function SimResultClient() {
               />
             </CollapsibleSection>
           )}
+          {r.dps != null && (
+            <ResultInsights
+              dps={r.dps as number}
+              dpsError={r.dps_error as number | undefined}
+              iterations={r.iterations as number | undefined}
+            />
+          )}
         </>
       ) : (
         <>
@@ -1254,7 +1308,7 @@ export default function SimResultClient() {
             {info?.kind === 'dungeon' && (
               <div className="mt-6 grid grid-cols-1 gap-3 border-t border-white/5 pt-6 sm:grid-cols-3 sm:gap-4">
                 <div className="text-center">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">
+                  <p className="text-[10px] font-black tracking-widest text-zinc-500 uppercase">
                     Route HP
                   </p>
                   <p className="mt-1 text-lg font-bold text-emerald-400">
@@ -1268,7 +1322,7 @@ export default function SimResultClient() {
                   </p>
                 </div>
                 <div className="text-center">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">
+                  <p className="text-[10px] font-black tracking-widest text-zinc-500 uppercase">
                     Timer
                   </p>
                   <p className="mt-1 text-lg font-bold text-amber-400">
@@ -1282,7 +1336,7 @@ export default function SimResultClient() {
                   </p>
                 </div>
                 <div className="text-center">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">
+                  <p className="text-[10px] font-black tracking-widest text-zinc-500 uppercase">
                     Min. Per DPS
                   </p>
                   <p className="mt-1 text-lg font-bold text-sky-400">
@@ -1351,7 +1405,7 @@ export default function SimResultClient() {
 
                   return (
                     <div key={group.title}>
-                      <h3 className="mb-3 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                      <h3 className="mb-3 text-[11px] font-black tracking-[0.2em] text-zinc-500 uppercase">
                         {group.title}
                       </h3>
                       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -1386,7 +1440,8 @@ export default function SimResultClient() {
                                     rel="noopener noreferrer"
                                     onClick={(e) => {
                                       e.preventDefault();
-                                      if (wowheadHref) window.open(wowheadHref, '_blank', 'noopener,noreferrer');
+                                      if (wowheadHref)
+                                        window.open(wowheadHref, '_blank', 'noopener,noreferrer');
                                     }}
                                   >
                                     {iconUrl ? (
@@ -1397,7 +1452,10 @@ export default function SimResultClient() {
                                       />
                                     ) : (
                                       <div className="flex h-7 w-7 items-center justify-center rounded-[4px] bg-white/10">
-                                        <CircleAlert className="h-4 w-4 text-zinc-600" strokeWidth={2} />
+                                        <CircleAlert
+                                          className="h-4 w-4 text-zinc-600"
+                                          strokeWidth={2}
+                                        />
                                       </div>
                                     )}
                                   </a>
@@ -1409,7 +1467,10 @@ export default function SimResultClient() {
                                   />
                                 ) : (
                                   <div className="flex h-7 w-7 items-center justify-center rounded-[4px] bg-white/10">
-                                    <CircleAlert className="h-4 w-4 text-zinc-600" strokeWidth={2} />
+                                    <CircleAlert
+                                      className="h-4 w-4 text-zinc-600"
+                                      strokeWidth={2}
+                                    />
                                   </div>
                                 )}
                               </div>
@@ -1421,10 +1482,11 @@ export default function SimResultClient() {
                                       data-wowhead={`${buff.spellId ? 'spell' : 'item'}=${buff.spellId || buff.itemId}`}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="truncate text-[14px] font-bold capitalize leading-tight hover:underline"
+                                      className="truncate text-[14px] leading-tight font-bold capitalize hover:underline"
                                       onClick={(e) => {
                                         e.preventDefault();
-                                        if (wowheadHref) window.open(wowheadHref, '_blank', 'noopener,noreferrer');
+                                        if (wowheadHref)
+                                          window.open(wowheadHref, '_blank', 'noopener,noreferrer');
                                       }}
                                     >
                                       {(() => {
@@ -1435,7 +1497,7 @@ export default function SimResultClient() {
                                       })()}
                                     </a>
                                   ) : (
-                                    <p className="truncate text-[14px] font-bold capitalize leading-tight">
+                                    <p className="truncate text-[14px] leading-tight font-bold capitalize">
                                       {(() => {
                                         const rawName = buff.name.replace(/_/g, ' ');
                                         return rawName
@@ -1511,53 +1573,64 @@ export default function SimResultClient() {
           {r.stat_weights && (
             <StatWeightsTable statWeights={r.stat_weights as Record<string, number>} />
           )}
+          <ResultInsights
+            dps={r.dps as number}
+            dpsError={r.dps_error as number | undefined}
+            iterations={r.iterations as number | undefined}
+          />
         </>
       )}
 
       {/* Footer links */}
-      <div className="flex items-center justify-center gap-3 pb-4 text-xs text-muted">
-        <a
-          href={`${API_URL}/api/sim/${id}/raw`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="transition-colors hover:text-white"
-        >
-          Raw JSON
-        </a>
-        <span className="h-3 w-px bg-border" />
-        <a
-          href={`${API_URL}/api/sim/${id}/input`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="transition-colors hover:text-white"
-        >
-          Raw Input
-        </a>
-        <span className="h-3 w-px bg-border" />
-        <a
-          href={`${API_URL}/api/sim/${id}/data.csv`}
-          className="transition-colors hover:text-white"
-        >
-          CSV
-        </a>
-        <span className="h-3 w-px bg-border" />
-        <a
-          href={`${API_URL}/api/sim/${id}/html`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="transition-colors hover:text-white"
-        >
-          HTML Report
-        </a>
-        <span className="h-3 w-px bg-border" />
-        <a
-          href={`${API_URL}/api/sim/${id}/output.txt`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="transition-colors hover:text-white"
-        >
-          Text Output
-        </a>
+      <div className="text-muted flex items-center justify-center gap-3 pb-4 text-xs">
+        {shared ? (
+          <span>All displayed result data is included in the shared file.</span>
+        ) : (
+          <>
+            <a
+              href={`${API_URL}/api/sim/${id}/raw`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="transition-colors hover:text-white"
+            >
+              Raw JSON
+            </a>
+            <span className="bg-border h-3 w-px" />
+            <a
+              href={`${API_URL}/api/sim/${id}/input`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="transition-colors hover:text-white"
+            >
+              Raw Input
+            </a>
+            <span className="bg-border h-3 w-px" />
+            <a
+              href={`${API_URL}/api/sim/${id}/data.csv`}
+              className="transition-colors hover:text-white"
+            >
+              CSV
+            </a>
+            <span className="bg-border h-3 w-px" />
+            <a
+              href={`${API_URL}/api/sim/${id}/html`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="transition-colors hover:text-white"
+            >
+              HTML Report
+            </a>
+            <span className="bg-border h-3 w-px" />
+            <a
+              href={`${API_URL}/api/sim/${id}/output.txt`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="transition-colors hover:text-white"
+            >
+              Text Output
+            </a>
+          </>
+        )}
       </div>
     </div>
   );

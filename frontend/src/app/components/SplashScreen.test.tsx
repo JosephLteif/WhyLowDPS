@@ -127,4 +127,15 @@ describe('SplashScreen credential flow', () => {
 
     expect(screen.getByRole('button', { name: 'Scan desktop QR code' })).toBeInTheDocument();
   });
+
+  it('keeps the credentials screen scrollable when its content exceeds the viewport', () => {
+    render(<SplashScreen status="unauthenticated_needs_keys" progress="" />);
+
+    const logo = screen.getByAltText('WhyLowDps');
+    const content = logo.parentElement?.parentElement;
+    const viewport = content?.parentElement;
+
+    expect(content).toHaveClass('min-h-full', 'py-12');
+    expect(viewport).toHaveClass('overflow-y-auto');
+  });
 });

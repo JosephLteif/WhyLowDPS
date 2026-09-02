@@ -1,6 +1,6 @@
 {
   "productName": "WhyLowDps",
-  "version": "4.1.1",
+  "version": "5.0.1",
   "identifier": "com.whylowdps",
   "build": {
     "frontendDist": "../../frontend/out",
@@ -48,6 +48,13 @@
           "txt"
         ],
         "mimeType": "text/plain",
+        "role": "Editor"
+      },
+      {
+        "ext": [
+          "wldps"
+        ],
+        "mimeType": "application/json",
         "role": "Editor"
       }
     ]

@@ -193,6 +193,222 @@ fn enrich_mythic_profile_member_links(value: &mut Value) {
     }
 }
 
+fn has_mythic_best_runs(value: &Value) -> bool {
+    value
+        .get("current_period")
+        .and_then(|period| period.get("best_runs"))
+        .and_then(Value::as_array)
+        .is_some_and(|runs| !runs.is_empty())
+}
+
+fn latest_mythic_season_id(value: &Value) -> Option<u64> {
+    value
+        .get("seasons")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|season| season.get("id").and_then(Value::as_u64))
+        .max()
+}
+
+fn merge_mythic_season_best_runs(profile: &mut Value, season_details: &Value) {
+    let Some(best_runs) = season_details
+        .get("best_runs")
+        .filter(|runs| runs.as_array().is_some_and(|entries| !entries.is_empty()))
+    else {
+        return;
+    };
+
+    let Some(profile_object) = profile.as_object_mut() else {
+        return;
+    };
+    let current_period = profile_object
+        .entry("current_period".to_string())
+        .or_insert_with(|| serde_json::json!({}));
+    let Some(period_object) = current_period.as_object_mut() else {
+        return;
+    };
+    let has_existing_runs = period_object
+        .get("best_runs")
+        .and_then(Value::as_array)
+        .is_some_and(|entries| !entries.is_empty());
+    if !has_existing_runs {
+        period_object.insert("best_runs".to_string(), best_runs.clone());
+    }
+}
+
+fn normalize_raid_catalog_name(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| {
+            if character.is_alphanumeric() {
+                character.to_ascii_lowercase()
+            } else {
+                ' '
+            }
+        })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn is_placeholder_raid_encounter(name: &str) -> bool {
+    normalize_raid_catalog_name(name) == "trash drop"
+}
+
+fn raid_instance_id(value: &Value) -> Option<i64> {
+    value
+        .get("instance")
+        .and_then(|instance| instance.get("id"))
+        .and_then(Value::as_i64)
+        .or_else(|| value.get("id").and_then(Value::as_i64))
+}
+
+fn raid_instance_name(value: &Value) -> Option<&str> {
+    value
+        .get("instance")
+        .and_then(|instance| instance.get("name"))
+        .and_then(Value::as_str)
+        .or_else(|| value.get("name").and_then(Value::as_str))
+}
+
+fn raid_encounter_id(value: &Value) -> Option<i64> {
+    value
+        .get("encounter")
+        .and_then(|encounter| encounter.get("id"))
+        .and_then(Value::as_i64)
+        .or_else(|| value.get("id").and_then(Value::as_i64))
+}
+
+fn raid_encounter_name(value: &Value) -> Option<&str> {
+    value
+        .get("encounter")
+        .and_then(|encounter| encounter.get("name"))
+        .and_then(Value::as_str)
+        .or_else(|| value.get("name").and_then(Value::as_str))
+}
+
+fn enrich_character_raid_encounters_with_catalog(value: &mut Value, catalog: &[Value]) {
+    let Some(expansions) = value.get_mut("expansions").and_then(Value::as_array_mut) else {
+        return;
+    };
+
+    for expansion in expansions {
+        let Some(instances) = expansion.get_mut("instances").and_then(Value::as_array_mut) else {
+            continue;
+        };
+
+        for instance in instances {
+            let instance_id = raid_instance_id(instance);
+            let instance_name = raid_instance_name(instance).unwrap_or_default();
+            let Some(catalog_instance) = catalog.iter().find(|candidate| {
+                if candidate.get("type").and_then(Value::as_str) != Some("raid") {
+                    return false;
+                }
+                let matches_id = instance_id.is_some()
+                    && candidate
+                        .get("id")
+                        .and_then(Value::as_i64)
+                        .is_some_and(|candidate_id| Some(candidate_id) == instance_id);
+                matches_id
+                    || (!instance_name.is_empty()
+                        && candidate.get("name").and_then(Value::as_str).is_some_and(
+                            |candidate_name| {
+                                normalize_raid_catalog_name(candidate_name)
+                                    == normalize_raid_catalog_name(instance_name)
+                            },
+                        ))
+            }) else {
+                continue;
+            };
+            let Some(catalog_encounters) = catalog_instance
+                .get("encounters")
+                .and_then(Value::as_array)
+                .filter(|encounters| !encounters.is_empty())
+            else {
+                continue;
+            };
+
+            let Some(modes) = instance.get_mut("modes").and_then(Value::as_array_mut) else {
+                continue;
+            };
+            for mode in modes {
+                let Some(mode_object) = mode.as_object_mut() else {
+                    continue;
+                };
+                let progress = mode_object
+                    .entry("progress".to_string())
+                    .or_insert_with(|| serde_json::json!({}));
+                let Some(progress_object) = progress.as_object_mut() else {
+                    continue;
+                };
+                if !progress_object.contains_key("total_count") {
+                    progress_object.insert(
+                        "total_count".to_string(),
+                        serde_json::json!(catalog_encounters
+                            .iter()
+                            .filter(|encounter| {
+                                !encounter
+                                    .get("name")
+                                    .and_then(Value::as_str)
+                                    .is_some_and(is_placeholder_raid_encounter)
+                            })
+                            .count()),
+                    );
+                }
+                progress_object
+                    .entry("encounters".to_string())
+                    .or_insert_with(|| serde_json::json!([]));
+                let Some(encounters) = progress_object
+                    .get_mut("encounters")
+                    .and_then(Value::as_array_mut)
+                else {
+                    continue;
+                };
+
+                encounters.retain(|entry| {
+                    !raid_encounter_name(entry).is_some_and(is_placeholder_raid_encounter)
+                });
+
+                for (index, catalog_encounter) in catalog_encounters.iter().enumerate() {
+                    let Some(encounter_id) = catalog_encounter.get("id").and_then(Value::as_i64)
+                    else {
+                        continue;
+                    };
+                    let Some(encounter_name) =
+                        catalog_encounter.get("name").and_then(Value::as_str)
+                    else {
+                        continue;
+                    };
+                    if is_placeholder_raid_encounter(encounter_name) {
+                        continue;
+                    }
+                    let already_present = encounters.iter().any(|entry| {
+                        raid_encounter_id(entry) == Some(encounter_id)
+                            || raid_encounter_name(entry).is_some_and(|name| {
+                                normalize_raid_catalog_name(name)
+                                    == normalize_raid_catalog_name(encounter_name)
+                            })
+                    });
+                    if already_present {
+                        continue;
+                    }
+
+                    encounters.push(serde_json::json!({
+                        "encounter": {
+                            "id": encounter_id,
+                            "name": encounter_name,
+                        },
+                        "completed_count": 0,
+                        "display_order": index + 1,
+                    }));
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::items_after_test_module)]
 mod tests {
@@ -308,6 +524,114 @@ mod tests {
         assert_eq!(payload["nested"]["members"][0]["linked_region"], "us");
         assert_eq!(payload["nested"]["members"][0]["linked_realm"], "area-52");
         assert_eq!(payload["nested"]["members"][0]["linked_name"], "dps");
+    }
+
+    #[test]
+    fn mythic_profile_fallback_uses_latest_season_best_runs_when_period_is_empty() {
+        let mut profile = json!({
+            "current_mythic_rating": { "rating": 2410.0 },
+            "current_period": { "period": { "id": 12 }, "best_runs": [] },
+            "seasons": [{ "id": 10 }, { "id": 11 }]
+        });
+        let season_details = json!({
+            "best_runs": [{
+                "keystone_level": 14,
+                "dungeon": { "name": "The Dawnbreaker" }
+            }]
+        });
+
+        assert_eq!(latest_mythic_season_id(&profile), Some(11));
+        assert!(!has_mythic_best_runs(&profile));
+        merge_mythic_season_best_runs(&mut profile, &season_details);
+
+        assert!(has_mythic_best_runs(&profile));
+        assert_eq!(
+            profile["current_period"]["best_runs"][0]["keystone_level"],
+            14
+        );
+        assert_eq!(profile["current_mythic_rating"]["rating"], 2410.0);
+    }
+
+    #[test]
+    fn raid_encounter_catalog_adds_uncompleted_bosses_without_duplicates() {
+        let mut payload = json!({
+            "expansions": [{
+                "instances": [{
+                    "instance": { "id": 1300, "name": "The Current Raid" },
+                    "modes": [{
+                        "difficulty": { "type": "normal" },
+                        "progress": {
+                            "completed_count": 7,
+                            "total_count": 8,
+                            "encounters": [{
+                                "encounter": { "id": 1, "name": "First Boss" },
+                                "completed_count": 1
+                            }, {
+                                "encounter": { "id": 9, "name": "Trash Drop" },
+                                "completed_count": 0
+                            }]
+                        }
+                    }]
+                }]
+            }]
+        });
+        let catalog = vec![json!({
+            "id": 1300,
+            "name": "The Current Raid",
+            "type": "raid",
+            "encounters": [
+                { "id": 1, "name": "First Boss" },
+                { "id": 2, "name": "Second Boss" },
+                { "id": 3, "name": "Third Boss" },
+                { "id": 4, "name": "Fourth Boss" },
+                { "id": 5, "name": "Fifth Boss" },
+                { "id": 6, "name": "Sixth Boss" },
+                { "id": 7, "name": "Seventh Boss" },
+                { "id": 8, "name": "Ul'atek" },
+                { "id": 9, "name": "Trash Drop" }
+            ]
+        })];
+
+        enrich_character_raid_encounters_with_catalog(&mut payload, &catalog);
+        enrich_character_raid_encounters_with_catalog(&mut payload, &catalog);
+
+        let encounters = payload["expansions"][0]["instances"][0]["modes"][0]["progress"]
+            ["encounters"]
+            .as_array()
+            .expect("encounter list");
+        assert_eq!(encounters.len(), 8);
+        assert!(!encounters
+            .iter()
+            .any(|entry| raid_encounter_name(entry) == Some("Trash Drop")));
+        let ulatek = encounters
+            .iter()
+            .find(|entry| raid_encounter_name(entry) == Some("Ul'atek"))
+            .expect("uncompleted boss");
+        assert_eq!(ulatek["completed_count"], 0);
+        assert_eq!(ulatek["display_order"], 8);
+    }
+
+    #[test]
+    fn mythic_profile_fallback_does_not_replace_existing_period_runs() {
+        let mut profile = json!({
+            "current_period": {
+                "best_runs": [{ "keystone_level": 12, "dungeon": { "name": "Ara-Kara" } }]
+            }
+        });
+        let season_details = json!({
+            "best_runs": [{ "keystone_level": 14, "dungeon": { "name": "The Dawnbreaker" } }]
+        });
+
+        merge_mythic_season_best_runs(&mut profile, &season_details);
+
+        assert_eq!(
+            profile["current_period"]["best_runs"][0]["keystone_level"],
+            12
+        );
+        assert_eq!(
+            profile["current_period"]["best_runs"][0]["dungeon"]["name"],
+            "Ara-Kara"
+        );
     }
 
     #[test]
@@ -1083,7 +1407,35 @@ pub async fn proxy_character_mythic_keystone_profile(
 
     match res {
         Ok(r) if r.status().is_success() => {
-            let data: serde_json::Value = r.json().await.unwrap_or(serde_json::json!({}));
+            let mut data: serde_json::Value = r.json().await.unwrap_or(serde_json::json!({}));
+            if !has_mythic_best_runs(&data) {
+                if let Some(season_id) = latest_mythic_season_id(&data) {
+                    let season_url = format!(
+                        "https://{}.api.blizzard.com/profile/wow/character/{}/{}/mythic-keystone-profile/season/{}?namespace={}&locale=en_US",
+                        region,
+                        realm_slug,
+                        name.to_lowercase(),
+                        season_id,
+                        namespace
+                    );
+                    if let Ok(season_response) = state
+                        .client
+                        .get(&season_url)
+                        .header("Authorization", format!("Bearer {}", token))
+                        .send()
+                        .await
+                    {
+                        if season_response.status().is_success() {
+                            if let Ok(season_details) =
+                                season_response.json::<serde_json::Value>().await
+                            {
+                                merge_mythic_season_best_runs(&mut data, &season_details);
+                            }
+                        }
+                    }
+                }
+            }
+            enrich_mythic_profile_member_links(&mut data);
             store.set_cache(&cache_key, data.to_string());
             HttpResponse::Ok().json(data)
         }
@@ -1112,7 +1464,9 @@ pub async fn proxy_character_raid_encounters(
     );
     if !query.refresh.unwrap_or(false) {
         if let Some(cached) = store.get_cache(&cache_key) {
-            if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&cached) {
+            if let Ok(mut json_val) = serde_json::from_str::<serde_json::Value>(&cached) {
+                let catalog = crate::game_data::get_instances();
+                enrich_character_raid_encounters_with_catalog(&mut json_val, &catalog);
                 return HttpResponse::Ok().json(json_val);
             }
         }
@@ -1147,7 +1501,9 @@ pub async fn proxy_character_raid_encounters(
 
     match res {
         Ok(r) if r.status().is_success() => {
-            let data: serde_json::Value = r.json().await.unwrap_or(serde_json::json!({}));
+            let mut data: serde_json::Value = r.json().await.unwrap_or(serde_json::json!({}));
+            let catalog = crate::game_data::get_instances();
+            enrich_character_raid_encounters_with_catalog(&mut data, &catalog);
             store.set_cache(&cache_key, data.to_string());
             HttpResponse::Ok().json(data)
         }

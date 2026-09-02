@@ -1,10 +1,20 @@
 'use client';
 
-import { Activity, ExternalLink, LoaderCircle, Maximize2, Minimize2, Pause } from 'lucide-react';
-import { usePathname, useRouter } from 'next/navigation';
+import {
+  Activity,
+  Clock3,
+  ExternalLink,
+  LoaderCircle,
+  Maximize2,
+  Minimize2,
+  Pause,
+  X,
+} from 'lucide-react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { parseCharacterInfo } from '@/lib/simc-parser';
-import { API_URL, fetchJson } from '../lib/api';
+import { API_URL, fetchJson, getQueue } from '../lib/api';
 import { simResultHref } from '../lib/routes';
 import {
   loadTrackedSimulations,
@@ -19,6 +29,7 @@ type SimulationStatus = 'pending' | 'running' | 'paused' | 'done' | 'failed' | '
 interface SimulationSnapshot extends TrackedSimulation {
   status: SimulationStatus;
   progress: number;
+  queuePosition?: number | null;
   progressStage?: string;
   progressDetail?: string;
   createdAt?: string;
@@ -41,10 +52,6 @@ const ACTIVE_STATUSES = new Set<SimulationStatus>(['pending', 'running', 'paused
 const TERMINAL_STATUSES = new Set<SimulationStatus>(['done', 'failed', 'cancelled']);
 const SIMULATION_ACTIVITY_MINIMIZED_KEY = 'whylowdps_simulation_activity_minimized';
 
-function isSimulationResultRoute(pathname: string | null): boolean {
-  return pathname?.split('/').filter(Boolean)[0] === 'sim';
-}
-
 function simTypeLabel(simType?: string): string {
   return (
     (
@@ -52,7 +59,7 @@ function simTypeLabel(simType?: string): string {
         quick: 'Quick Sim',
         top_gear: 'Top Gear',
         droptimizer: 'Drop Finder',
-        upgrade_compare: 'Upgrade Compare',
+        upgrade_compare: 'Crest Upgrades',
         stat_weights: 'Stat Weights',
         stat_plot: 'Stat Plot',
       } as Record<string, string>
@@ -93,76 +100,140 @@ function mergeTracked(
 function CompactSimulationRow({
   simulation,
   onOpen,
+  onCancel,
+  cancelling,
 }: {
   simulation: SimulationSnapshot;
   onOpen: (id: string) => void;
+  onCancel: (id: string) => void;
+  cancelling: boolean;
 }) {
   const isPaused = simulation.status === 'paused';
+  const isQueued = simulation.status === 'pending';
   const progress = Math.min(100, Math.max(0, simulation.progress));
   const title = simulation.playerName || 'Simulation';
   const detail =
     simulation.progressDetail?.trim() ||
     simulation.progressStage ||
-    (isPaused ? 'Paused' : 'Simulating');
+    (isPaused
+      ? 'Paused'
+      : isQueued
+        ? simulation.queuePosition
+          ? `Queued · position #${simulation.queuePosition}`
+          : 'Queued · waiting for a slot'
+        : 'Simulating');
 
   return (
-    <button
-      type="button"
-      onClick={() => onOpen(simulation.id)}
-      className="group hover:border-gold/30 focus-visible:ring-gold/60 w-full rounded-lg border border-white/[0.06] bg-black/20 p-3 text-left transition-colors hover:bg-white/[0.04] focus-visible:ring-2 focus-visible:outline-none"
-      aria-label={`Open ${title} ${simTypeLabel(simulation.simType)} result`}
-    >
-      <div className="flex items-start gap-2.5">
-        <span className="bg-gold/10 text-gold mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md">
-          {isPaused ? (
-            <Pause className="h-3.5 w-3.5" strokeWidth={2} />
-          ) : (
-            <LoaderCircle className="h-3.5 w-3.5 animate-spin" strokeWidth={2} />
-          )}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center justify-between gap-2">
-            <span className="truncate text-xs font-semibold text-zinc-100">{title}</span>
-            <span className="text-gold shrink-0 font-mono text-[11px] tabular-nums">
-              {Math.round(progress)}%
+    <div className="hover:border-gold/30 flex items-stretch gap-1 rounded-lg border border-white/[0.06] bg-black/20 p-1 transition-colors hover:bg-white/[0.04]">
+      <button
+        type="button"
+        onClick={() => onOpen(simulation.id)}
+        className="focus-visible:ring-gold/60 group min-w-0 flex-1 rounded-md p-2 text-left focus-visible:ring-2 focus-visible:outline-none"
+        aria-label={`Open ${title} ${simTypeLabel(simulation.simType)} result`}
+      >
+        <div className="flex items-start gap-2.5">
+          <span className="bg-gold/10 text-gold mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md">
+            {isPaused ? (
+              <Pause className="h-3.5 w-3.5" strokeWidth={2} />
+            ) : isQueued ? (
+              <Clock3 className="h-3.5 w-3.5" strokeWidth={2} />
+            ) : (
+              <LoaderCircle className="h-3.5 w-3.5 animate-spin" strokeWidth={2} />
+            )}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center justify-between gap-2">
+              <span className="truncate text-xs font-semibold text-zinc-100">{title}</span>
+              {isQueued ? (
+                <span className="text-gold border-gold/20 bg-gold/[0.08] inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold">
+                  <Clock3 className="h-3 w-3" strokeWidth={2} />
+                  Queued
+                </span>
+              ) : (
+                <span className="text-gold shrink-0 font-mono text-[11px] tabular-nums">
+                  {Math.round(progress)}%
+                </span>
+              )}
+            </span>
+            <span className="mt-0.5 block truncate text-[11px] text-zinc-500">
+              {simTypeLabel(simulation.simType)} · {detail}
+            </span>
+            <span className="mt-2 block h-1 overflow-hidden rounded-full bg-zinc-800">
+              {isQueued ? (
+                <span className="bg-gold/70 block h-full w-1/3 animate-pulse rounded-full" />
+              ) : (
+                <span
+                  className="from-gold-dark to-gold block h-full rounded-full bg-gradient-to-r transition-[width] duration-700"
+                  style={{ width: `${Math.max(progress, 3)}%` }}
+                />
+              )}
             </span>
           </span>
-          <span className="mt-0.5 block truncate text-[11px] text-zinc-500">
-            {simTypeLabel(simulation.simType)} · {detail}
-          </span>
-          <span className="mt-2 block h-1 overflow-hidden rounded-full bg-zinc-800">
-            <span
-              className="from-gold-dark to-gold block h-full rounded-full bg-gradient-to-r transition-[width] duration-700"
-              style={{ width: `${Math.max(progress, 3)}%` }}
-            />
-          </span>
-        </span>
-        <ExternalLink
-          className="group-hover:text-gold mt-1 h-3.5 w-3.5 shrink-0 text-zinc-600 transition-colors"
-          strokeWidth={2}
-        />
-      </div>
-    </button>
+          <ExternalLink
+            className="group-hover:text-gold mt-1 h-3.5 w-3.5 shrink-0 text-zinc-600 transition-colors"
+            strokeWidth={2}
+          />
+        </div>
+      </button>
+      <button
+        type="button"
+        onClick={() => onCancel(simulation.id)}
+        disabled={cancelling}
+        className="focus-visible:ring-gold/60 self-start rounded-md p-2 text-zinc-600 transition-colors hover:bg-red-400/10 hover:text-red-300 focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50"
+        aria-label={`Cancel ${title} ${simTypeLabel(simulation.simType)}`}
+        title="Cancel simulation"
+      >
+        <X className="h-3.5 w-3.5" strokeWidth={2} />
+      </button>
+    </div>
   );
 }
 
 export default function SimulationActivity() {
-  const pathname = usePathname();
   const router = useRouter();
   const { notify } = useNotifications();
   const [simulations, setSimulations] = useState<SimulationSnapshot[]>([]);
   const [minimized, setMinimized] = useState(false);
+  const [cancellingIds, setCancellingIds] = useState<Set<string>>(() => new Set());
   const simulationsRef = useRef(simulations);
   const previousStatusesRef = useRef(new Map<string, SimulationStatus>());
 
   simulationsRef.current = simulations;
-  const isViewingSimulationResult = isSimulationResultRoute(pathname);
   const openSimulation = useCallback(
     (id: string) => {
       setMinimized(false);
       router.push(simResultHref(id));
     },
     [router]
+  );
+
+  const cancelSimulation = useCallback(
+    async (id: string) => {
+      setCancellingIds((current) => new Set(current).add(id));
+      try {
+        await fetchJson(`${API_URL}/api/sim/${encodeURIComponent(id)}/cancel`, { method: 'POST' });
+        previousStatusesRef.current.delete(id);
+        const next = simulationsRef.current.filter((simulation) => simulation.id !== id);
+        setSimulations(next);
+        saveTrackedSimulationState(next);
+      } catch {
+        notify({
+          title: 'Could not cancel simulation',
+          description:
+            'The simulation may have already finished. Refresh its status and try again.',
+          variant: 'error',
+          durationMs: 5000,
+          dedupeKey: `simulation-cancel:${id}`,
+        });
+      } finally {
+        setCancellingIds((current) => {
+          const next = new Set(current);
+          next.delete(id);
+          return next;
+        });
+      }
+    },
+    [notify]
   );
 
   useEffect(() => {
@@ -187,6 +258,46 @@ export default function SimulationActivity() {
     };
     window.addEventListener(SIMULATION_TRACKED_EVENT, handleTracked);
     return () => window.removeEventListener(SIMULATION_TRACKED_EVENT, handleTracked);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    const syncQueue = async () => {
+      try {
+        const data = await getQueue('mine');
+        if (!active) return;
+        const queued = data.jobs
+          .filter((job) => ACTIVE_STATUSES.has(job.status))
+          .map((job) => ({
+            id: job.id,
+            status: job.status,
+            progress: job.progress,
+            queuePosition: job.queue_position,
+            simType: job.sim_type,
+            playerName: job.player_name || undefined,
+            createdAt: job.created_at,
+            progressStage: job.progress_stage || undefined,
+            progressDetail: job.progress_detail || undefined,
+          }));
+        queued.forEach((job) => {
+          if (!previousStatusesRef.current.has(job.id)) {
+            previousStatusesRef.current.set(job.id, job.status);
+          }
+        });
+        setSimulations(queued);
+        saveTrackedSimulationState(queued);
+      } catch {
+        // The tracked polling path remains available while the queue endpoint is unavailable.
+      }
+    };
+
+    void syncQueue();
+    const timer = window.setInterval(() => void syncQueue(), 2500);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
   }, []);
 
   useEffect(() => {
@@ -285,9 +396,10 @@ export default function SimulationActivity() {
     };
   }, [notify, router, simulations.length]);
 
-  if (simulations.length === 0) return null;
+  const queuedCount = simulations.filter((simulation) => simulation.status === 'pending').length;
+  const activeCount = simulations.length - queuedCount;
 
-  if (isViewingSimulationResult) return null;
+  if (simulations.length === 0) return null;
 
   if (minimized) {
     return (
@@ -299,7 +411,9 @@ export default function SimulationActivity() {
         aria-label={`Show ${simulations.length} active simulation${simulations.length === 1 ? '' : 's'}`}
       >
         <Activity className="h-3.5 w-3.5" strokeWidth={2} />
-        <span>{simulations.length} running</span>
+        <span>
+          {activeCount} active · {queuedCount} queued
+        </span>
         <Maximize2 className="h-3.5 w-3.5" strokeWidth={2} />
       </button>
     );
@@ -316,19 +430,27 @@ export default function SimulationActivity() {
           <div className="min-w-0">
             <p className="truncate text-xs font-semibold text-zinc-100">Simulation progress</p>
             <p className="text-[11px] text-zinc-500">
-              {simulations.length} active simulation{simulations.length === 1 ? '' : 's'}
+              {activeCount} active · {queuedCount} queued
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => setMinimized(true)}
-          className="focus-visible:ring-gold/60 rounded-md p-1.5 text-zinc-500 transition-colors hover:bg-white/10 hover:text-zinc-200 focus-visible:ring-2 focus-visible:outline-none"
-          title="Minimize simulation progress"
-          aria-label="Minimize simulation progress"
-        >
-          <Minimize2 className="h-3.5 w-3.5" strokeWidth={2} />
-        </button>
+        <div className="flex items-center gap-1">
+          <Link
+            href="/queue"
+            className="text-gold hover:bg-gold/10 rounded-md px-2 py-1 text-[11px] font-semibold"
+          >
+            Manage queue
+          </Link>
+          <button
+            type="button"
+            onClick={() => setMinimized(true)}
+            className="focus-visible:ring-gold/60 rounded-md p-1.5 text-zinc-500 transition-colors hover:bg-white/10 hover:text-zinc-200 focus-visible:ring-2 focus-visible:outline-none"
+            title="Minimize simulation progress"
+            aria-label="Minimize simulation progress"
+          >
+            <Minimize2 className="h-3.5 w-3.5" strokeWidth={2} />
+          </button>
+        </div>
       </header>
       <div className="space-y-2">
         {simulations.map((simulation) => (
@@ -336,6 +458,8 @@ export default function SimulationActivity() {
             key={simulation.id}
             simulation={simulation}
             onOpen={openSimulation}
+            onCancel={cancelSimulation}
+            cancelling={cancellingIds.has(simulation.id)}
           />
         ))}
       </div>

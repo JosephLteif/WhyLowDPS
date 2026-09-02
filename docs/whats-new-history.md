@@ -2,9 +2,120 @@
 
 This is the append-only archive for the public GitHub Pages changelog. The app popup intentionally shows only the latest update; older versions remain available on the Pages archive and at their repository release tags.
 
-Add new work under the `Unreleased` section. The release workflow promotes that section to the selected version and date, then the app consumes the synchronized data and the GitHub Pages workflow renders this Markdown file into the published `changelog.html` page.
+Add new work under the `Unreleased` section. Stable bump and `promote-dev` releases promote that section to the selected version and date, synchronize the app data, and update `master` for GitHub Pages. `republish` only rebuilds an existing release tag.
 
-## Unreleased
+## Unreleased — Simulation queue management
+
+### New features
+
+#### Add optional Raider.IO and Warcraft Logs character data
+
+Character pages can now combine Blizzard data with public Raider.IO and Warcraft Logs data without making either provider a dependency.
+
+- Raider.IO is enabled by default and can be disabled under Settings > Integrations; it adds current-season Mythic+ scores, best runs, raid progression, attribution, and profile links.
+- Warcraft Logs activates after valid credentials are saved and adds latest-zone rankings, five recent public reports with report dates and end times, and per-boss best and median parses, public kills, best amounts, metrics, and specs.
+- The integration settings explain what belongs in each Warcraft Logs field and show the exact redirect host and port for the current app address; private reports and private OAuth/PKCE access are not used.
+- Personal Warcraft Logs credentials take precedence over shared hosted credentials, while environment credentials take precedence over the administrator-managed fallback. Secrets remain protected and are never returned by the API.
+
+### Improvements
+
+#### Monitor and manage simulation queues
+
+Simulation runs now support a configurable parallel-job limit, with clear queue visibility across desktop, hosted Docker, and the dashboard.
+
+- Set the number of parallel simulations from Settings > Simulation Performance; Docker-hosted changes are restricted to administrators.
+- Monitor running and queued simulations from the global activity card, including from a simulation's own result page.
+- Queued simulations now clearly explain that SimC has not started, show the current queue position, and link directly to queue management instead of displaying misleading zero-progress details.
+- Cancel queued or running simulations directly from the activity card.
+- See the current queued-job count on the dashboard, which refreshes automatically while simulations are in flight.
+
+#### Connect Wishlist and Upgrade Planner
+
+Wishlist targets and owned-item upgrades now follow one clear gear roadmap without duplicating entries.
+
+- Use Drop Finder to save gear you still need to Wishlist, then review or simulate those targets from the Wishlist page.
+- Open Upgrade Planner to select items already present in your SimC export and add their upgrade paths to Gear Roadmap.
+- See the matching character's Wishlist count and move between Drop Finder, Wishlist, and Upgrade Planner from one Upgrades navigation group.
+- Reorder roadmap entries, mark upgrades complete, and track planned costs against available currencies.
+
+#### Search and save Trinket result combinations
+
+Upgrade Trinket results are now easier to scan and turn into Wishlist plans.
+
+- Search by a specific trinket name or combination to narrow the result matrix.
+- Save a trinket pair directly to the matching character's Wishlist; eligible upgrade trinkets are added together.
+- The old-season and Turbulent trinket filter appears in results only when those candidates were included when the simulation was launched.
+
+#### Share and open simulation results anywhere
+
+Completed simulation results can now travel as portable `.wldps` files and open in another WhyLowDps app with the same result view.
+
+- Use Share result file on a completed result page, then import the file from the header or by dragging it into the web or desktop app.
+- On Windows, double-clicking a `.wldps` file launches WhyLowDps when it is closed or focuses the existing app when it is already running.
+- Shared results include the display data needed for review without requiring the original simulation job or account.
+
+#### Understand result variation at a glance
+
+Result pages now place a clearer analysis section at the bottom, helping you interpret DPS variation and compare upgrades without overreacting to simulation noise.
+
+- View an estimated DPS distribution with P5, P25, P50, P75, and P95 percentile markers.
+- See a 95% confidence interval for the reported DPS mean when iteration data is available.
+- Compare Top Gear deltas against an uncertainty threshold labeled Meaningful, Within noise, or Needs more data.
+- Read stat plots against a visible baseline and compare stat weights using ranked relative bars.
+- The Result Insights section starts collapsed so the primary result remains the first thing you see.
+
+#### Enrich character detail pages
+
+Character detail pages now bring profile, progression, profession, and external character information together in the Profile tab.
+
+- See active specialization, faction, guild, achievement points, item levels, Mythic+ score, highest key, top dungeon, weekly vault progress, and current-season raid progress when Blizzard provides the data.
+- Review primary and secondary professions with their available skill-point progress in a card styled with the character attributes.
+- Open consistent Armory, Warcraft Logs, and Raider.IO links for characters with spaces, apostrophes, and realm slugs.
+- Character data refreshes in the background after 15 minutes while the page is visible, keeps the last successful snapshot during failures, and recovers when the page becomes visible again.
+- Mythic+ summaries use current-season best runs when the profile index does not include period best-run entries.
+
+#### Consolidate external character data
+
+Character Mythic+ and Raiding tabs now place each provider's unique information alongside the canonical Blizzard data, so the same score and raid totals are not shown twice.
+
+- Mythic+ keeps Blizzard's score, vault, and recent runs as the primary view and fills missing summary values from Raider.IO, with ranks, best-run scores and levels, completion dates, and direct run links shown inline.
+- Raiding keeps Blizzard boss kills and difficulty data as the canonical view, adds Warcraft Logs boss metadata inline, and uses Raider.IO for active-raid AOTC and Cutting Edge milestones, achievement dates, scan freshness, attribution, and the profile link.
+- Warcraft Logs remains a separate card for unique latest-zone ranking metrics and five recent public reports with start and end dates.
+- Raider.IO progression and achievement entries are filtered against the active Blizzard raid list so stale or inactive raids do not reappear.
+
+#### Default Raiding to the latest expansion
+
+The character Raiding tab now opens on the latest concrete expansion so raid progression is immediately visible.
+
+- The generic `Current expansion` option is no longer shown when it does not map to the character's raid data.
+- The final expansion in the available raid data is selected by default, while `All expansions` remains available for browsing older content.
+
+### Bug fixes
+
+#### Keep raid data complete and resilient
+
+Raid rows now retain every real boss, including bosses with zero kills, while ignoring catalog-only trash placeholders.
+
+- Warcraft Logs metadata is merged into the matching Blizzard boss row without replacing Blizzard kill and difficulty data.
+- Provider failures, outages, rate limits, refreshes, and missing rankings leave the last usable snapshot and Blizzard raid data visible.
+
+#### Show current raid progression
+
+The character Raiding tab now displays current-season raid progress when the active raid pool identifies bosses instead of raid instances.
+
+- Active raid filters now match both raid instance IDs and boss encounter IDs returned by the game data context.
+
+## v5.0.1 — 2026-08-31 — Release notes for v5.0.1
+
+### Bug fixes
+
+#### Keep stable release notes synchronized
+
+Stable releases promoted from a developer build now move the release notes into the versioned archive and update the app and GitHub Pages data together.
+
+- The promotion commit updates `master` so the published changelog cannot remain on `Unreleased` after a successful release.
+
+## v5.0.0 — 2026-08-31 — Stable release archive
 
 ### Improvements
 
@@ -340,6 +451,7 @@ These stable tags are preserved in the repository. Releases whose detailed notes
 
 | Version | Tagged | Version | Tagged |
 | --- | --- | --- | --- |
+| v5.0.1 | 2026-08-31 | v5.0.0 | 2026-08-31 |
 | v4.1.1 | 2026-08-25 | v4.1.0 | 2026-08-24 |
 | v4.0.0 | 2026-08-21 | v3.8.0 | 2026-08-16 |
 | v3.7.0 | 2026-08-14 | v3.6.0 | 2026-08-13 |

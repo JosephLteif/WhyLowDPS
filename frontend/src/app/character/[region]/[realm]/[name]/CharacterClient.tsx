@@ -8,13 +8,30 @@ import {
   API_URL,
   deleteCharacterProfile,
   fetchJson,
+  getIntegrationSettings,
+  getRaiderIoCharacter,
+  getWarcraftLogsCharacter,
   listCharacterProfiles,
   SavedCharacterProfile,
 } from '@/app/lib/api';
+import type { IntegrationSettings, RaiderIoData, WarcraftLogsData } from '@/app/lib/api';
+import type {
+  CharacterPanelEquipment,
+  CharacterProfilePayload,
+  CharacterProfessionsPayload,
+  CharacterSpecializationsPayload,
+  CharacterStatisticsPayload,
+  MythicPlusPayload,
+  RaidEncountersPayload,
+} from '@/app/lib/character-domain-types';
+import { getCharacterValueLabel, normalizeCharacterSlug } from '@/app/lib/character-panel-utils';
+import { CHARACTER_DATA_TTL_MS, isCharacterDataStale } from '@/app/lib/character-refresh';
 import { buildWishlistHref } from '@/app/lib/wishlist';
+import { useAuth } from '../../../../components/AuthContext';
 import CharacterPanel from '../../../../components/CharacterPanel';
 import ConfirmModal from '../../../../components/ConfirmModal';
 import ToggleOptionCard from '../../../../components/shared/ToggleOptionCard';
+import type { CharacterIntegrationState } from '../../../../components/character/ExternalIntegrationCards';
 
 const LOCAL_TRACKED_CHARACTERS_KEY = 'whylowdps_tracked_characters';
 const LAST_REFRESH_PREFIX = 'whylowdps_last_refresh_';
@@ -28,11 +45,70 @@ type RosterCharacter = {
   character_class?: { name?: string };
 };
 
-function normalizeCharacterSlug(value?: string): string {
-  return String(value || '')
-    .toLowerCase()
-    .replace(/'/g, '')
-    .replace(/\s+/g, '-');
+type CharacterPageData = {
+  profile: CharacterProfilePayload;
+  equipment: CharacterPanelEquipment;
+  statistics: CharacterStatisticsPayload;
+  specializations: CharacterSpecializationsPayload | null;
+  professions: CharacterProfessionsPayload;
+  mythicPlus: MythicPlusPayload;
+  raidEncounters: RaidEncountersPayload;
+};
+
+function initialIntegrationState<T>(enabled: boolean): CharacterIntegrationState<T> {
+  return {
+    enabled,
+    loading: false,
+    refreshing: false,
+    snapshot: null,
+    error: null,
+  };
+}
+
+function integrationErrorMessage(provider: 'Raider.IO' | 'Warcraft Logs'): string {
+  return `${provider} is temporarily unavailable.`;
+}
+
+function readRefreshTimestamp(storageKey: string): number | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const parsed = Number(window.localStorage.getItem(storageKey));
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function numberOrNull(value: unknown): number | null {
+  if (
+    value === null ||
+    value === undefined ||
+    (typeof value !== 'number' && typeof value !== 'string') ||
+    (typeof value === 'string' && value.trim() === '')
+  ) {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function hasPayload(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  return Array.isArray(value) ? value.length > 0 : Object.keys(value).length > 0;
+}
+
+function retainPreviousPayload<T>(
+  next: T,
+  previous: T | undefined,
+  shouldRetain: boolean
+): T | undefined {
+  return shouldRetain && previous !== undefined && !hasPayload(next) ? previous : next;
+}
+
+function objectSlug(value: unknown): string | null {
+  if (!value || typeof value !== 'object') return null;
+  const slug = (value as Record<string, unknown>).slug;
+  return typeof slug === 'string' && slug.trim() ? normalizeCharacterSlug(slug) : null;
 }
 
 function CopyIcon() {
@@ -42,6 +118,7 @@ function CopyIcon() {
 export default function CharacterClient() {
   const params = useParams();
   const searchParams = useSearchParams();
+  const { lightMode } = useAuth();
 
   // Robust resolution from params or URL path
   let region = (searchParams.get('region') || (params.region as string) || 'us').toLowerCase();
@@ -80,9 +157,19 @@ export default function CharacterClient() {
     }
   }
 
-  const [data, setData] = useState<any>(null);
+  const requestedKey = `${region.toLowerCase()}|${realm.toLowerCase()}|${name.toLowerCase()}`;
+  const refreshStorageKey = `${LAST_REFRESH_PREFIX}${requestedKey}`;
+  const [data, setData] = useState<CharacterPageData | null>(null);
+  const [raiderIoIntegration, setRaiderIoIntegration] = useState<
+    CharacterIntegrationState<RaiderIoData>
+  >(() => initialIntegrationState(true));
+  const [warcraftLogsIntegration, setWarcraftLogsIntegration] = useState<
+    CharacterIntegrationState<WarcraftLogsData>
+  >(() => initialIntegrationState(false));
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+  const [dataWarning, setDataWarning] = useState<string | null>(null);
   const [savedProfiles, setSavedProfiles] = useState<SavedCharacterProfile[]>([]);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [trackedCharacterKeys, setTrackedCharacterKeys] = useState<string[]>([]);
@@ -92,6 +179,11 @@ export default function CharacterClient() {
   const [lastRefreshedAt, setLastRefreshedAt] = useState<number | null>(null);
   const [simcMenuOpen, setSimcMenuOpen] = useState(false);
   const simcMenuRef = useRef<HTMLDivElement | null>(null);
+  const dataRef = useRef<CharacterPageData | null>(null);
+  const lastRefreshRef = useRef<number | null>(null);
+  const backgroundRefreshInFlightRef = useRef(false);
+  const initialLoadKeyRef = useRef<string | null>(null);
+  const integrationRequestKeyRef = useRef(requestedKey);
 
   // Fetch saved profiles for this character
   useEffect(() => {
@@ -157,12 +249,140 @@ export default function CharacterClient() {
     setSavedProfiles([]);
   }, [savedProfiles]);
 
-  const fetchCharacterData = useCallback(
+  const fetchIntegrations = useCallback(
     async (refresh = false) => {
-      if (!realm || !name) return;
-      setLoading(true);
+      if (!region || !realm || !name) return;
+      if (lightMode) {
+        setRaiderIoIntegration(initialIntegrationState(false));
+        setWarcraftLogsIntegration(initialIntegrationState(false));
+        return;
+      }
+      const requestKey = `${region.toLowerCase()}|${realm.toLowerCase()}|${name.toLowerCase()}`;
+      const begin = <T,>(
+        setter: React.Dispatch<React.SetStateAction<CharacterIntegrationState<T>>>,
+        enabled: boolean
+      ) => {
+        setter((previous) => ({
+          enabled,
+          loading: enabled && !previous.snapshot,
+          refreshing: enabled && refresh && Boolean(previous.snapshot),
+          snapshot: enabled ? previous.snapshot : null,
+          error: null,
+        }));
+      };
+
+      setRaiderIoIntegration((previous) => ({
+        ...previous,
+        loading: !previous.snapshot,
+        refreshing: refresh && Boolean(previous.snapshot),
+        error: null,
+      }));
+      setWarcraftLogsIntegration((previous) => ({
+        ...previous,
+        loading: !previous.snapshot,
+        refreshing: refresh && Boolean(previous.snapshot),
+        error: null,
+      }));
+
+      let settings: IntegrationSettings;
+      try {
+        settings = await getIntegrationSettings();
+      } catch {
+        settings = {
+          raider_io_enabled: true,
+          warcraft_logs_enabled: false,
+          warcraft_logs: {
+            user_configured: false,
+            user_client_id: null,
+            effective_source: null,
+            environment_configured: false,
+            admin_configured: false,
+          },
+        };
+      }
+      if (integrationRequestKeyRef.current !== requestKey) return;
+
+      begin(setRaiderIoIntegration, settings.raider_io_enabled !== false);
+      begin(setWarcraftLogsIntegration, settings.warcraft_logs_enabled === true);
+
+      if (settings.raider_io_enabled !== false) {
+        void getRaiderIoCharacter(region, realm, name, refresh)
+          .then((response) => {
+            if (integrationRequestKeyRef.current !== requestKey) return;
+            const hasFreshData = response.status === 'ok' && response.data !== null;
+            setRaiderIoIntegration((previous) => ({
+              ...previous,
+              loading: false,
+              refreshing: false,
+              snapshot:
+                hasFreshData || previous.snapshot?.status !== 'ok'
+                  ? response
+                  : previous.snapshot,
+              error:
+                hasFreshData || previous.snapshot?.status !== 'ok'
+                  ? null
+                  : integrationErrorMessage('Raider.IO'),
+            }));
+          })
+          .catch(() => {
+            if (integrationRequestKeyRef.current !== requestKey) return;
+            setRaiderIoIntegration((previous) => ({
+              ...previous,
+              loading: false,
+              refreshing: false,
+              error: integrationErrorMessage('Raider.IO'),
+            }));
+          });
+      }
+
+      if (settings.warcraft_logs_enabled === true) {
+        void getWarcraftLogsCharacter(region, realm, name, refresh)
+          .then((response) => {
+            if (integrationRequestKeyRef.current !== requestKey) return;
+            const hasFreshData = response.status === 'ok' && response.data !== null;
+            setWarcraftLogsIntegration((previous) => ({
+              ...previous,
+              loading: false,
+              refreshing: false,
+              snapshot:
+                hasFreshData || previous.snapshot?.status !== 'ok'
+                  ? response
+                  : previous.snapshot,
+              error:
+                hasFreshData || previous.snapshot?.status !== 'ok'
+                  ? null
+                  : integrationErrorMessage('Warcraft Logs'),
+            }));
+          })
+          .catch(() => {
+            if (integrationRequestKeyRef.current !== requestKey) return;
+            setWarcraftLogsIntegration((previous) => ({
+              ...previous,
+              loading: false,
+              refreshing: false,
+              error: integrationErrorMessage('Warcraft Logs'),
+            }));
+          });
+      }
+    },
+    [lightMode, name, realm, region]
+  );
+
+  const fetchCharacterData = useCallback(
+    async (refresh = false, background = false) => {
+      if (!region || !realm || !name) return;
+      if (background) {
+        if (backgroundRefreshInFlightRef.current) return;
+        if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+        backgroundRefreshInFlightRef.current = true;
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
       setError('');
-      const requestedKey = `${region.toLowerCase()}|${realm.toLowerCase()}|${name.toLowerCase()}`;
+      setDataWarning(null);
+      const refreshKey = `${LAST_REFRESH_PREFIX}${region.toLowerCase()}|${realm.toLowerCase()}|${name.toLowerCase()}`;
+      const previousData = dataRef.current;
 
       try {
         const query = `?region=${region}${refresh ? '&refresh=true' : ''}`;
@@ -177,62 +397,124 @@ export default function CharacterClient() {
           mythicPlus,
           raidEncounters,
         ] = await Promise.all([
-          fetchJson<any>(`${baseUrl}/profile${query}`),
-          fetchJson<any>(`${baseUrl}/equipment${query}`).catch(() => ({ equipped_items: [] })),
-          fetchJson<any>(`${baseUrl}/statistics${query}`).catch(() => ({})),
-          fetchJson<any>(`${baseUrl}/specializations${query}`).catch(() => ({})),
-          fetchJson<any>(`${baseUrl}/professions${query}`).catch(() => ({})),
-          fetchJson<any>(`${baseUrl}/mythic-keystone-profile${query}`).catch(() => ({})),
-          fetchJson<any>(`${baseUrl}/encounters/raids${query}`).catch(() => ({})),
+          fetchJson<CharacterProfilePayload>(`${baseUrl}/profile${query}`),
+          fetchJson<CharacterPanelEquipment>(`${baseUrl}/equipment${query}`).catch(() => null),
+          fetchJson<CharacterStatisticsPayload>(`${baseUrl}/statistics${query}`).catch(() => null),
+          fetchJson<CharacterSpecializationsPayload>(`${baseUrl}/specializations${query}`).catch(
+            () => null
+          ),
+          fetchJson<CharacterProfessionsPayload>(`${baseUrl}/professions${query}`).catch(
+            () => null
+          ),
+          fetchJson<MythicPlusPayload>(`${baseUrl}/mythic-keystone-profile${query}`).catch(
+            () => null
+          ),
+          fetchJson<RaidEncountersPayload>(`${baseUrl}/encounters/raids${query}`).catch(() => null),
         ]);
 
-        setData({
-          profile,
-          equipment,
-          statistics,
-          specializations,
-          professions,
-          mythicPlus,
-          raidEncounters,
-        });
-        if (refresh) {
+        const retainSnapshot = refresh && previousData !== null;
+        const nextData: CharacterPageData = {
+          profile: retainPreviousPayload(profile, previousData?.profile, retainSnapshot) || profile,
+          equipment: retainPreviousPayload(equipment, previousData?.equipment, retainSnapshot) || {
+            equipped_items: [],
+          },
+          statistics:
+            retainPreviousPayload(statistics, previousData?.statistics, retainSnapshot) ?? null,
+          specializations:
+            retainPreviousPayload(specializations, previousData?.specializations, retainSnapshot) ??
+            null,
+          professions:
+            retainPreviousPayload(professions, previousData?.professions, retainSnapshot) ?? null,
+          mythicPlus:
+            retainPreviousPayload(mythicPlus, previousData?.mythicPlus, retainSnapshot) ?? null,
+          raidEncounters:
+            retainPreviousPayload(raidEncounters, previousData?.raidEncounters, retainSnapshot) ??
+            null,
+        };
+        dataRef.current = nextData;
+        setData(nextData);
+        void fetchIntegrations(refresh);
+        if (refresh || lastRefreshRef.current === null) {
           const ts = Date.now();
+          lastRefreshRef.current = ts;
           setLastRefreshedAt(ts);
           if (typeof window !== 'undefined') {
-            localStorage.setItem(`${LAST_REFRESH_PREFIX}${requestedKey}`, String(ts));
+            try {
+              window.localStorage.setItem(refreshKey, String(ts));
+            } catch {
+              // Local storage can be unavailable in privacy-restricted webviews.
+            }
           }
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch character');
+        const message = err instanceof Error ? err.message : 'Failed to fetch character';
+        if (dataRef.current) {
+          setDataWarning(
+            `Unable to refresh character data. Showing the last successful snapshot. ${message}`
+          );
+        } else {
+          setError(message);
+        }
       } finally {
-        setLoading(false);
+        if (background) {
+          backgroundRefreshInFlightRef.current = false;
+          setRefreshing(false);
+        } else {
+          setLoading(false);
+        }
       }
     },
-    [region, realm, name]
+    [fetchIntegrations, region, realm, name]
   );
 
   useEffect(() => {
-    fetchCharacterData(forceRefresh);
-  }, [fetchCharacterData, forceRefresh]);
+    if (!region || !realm || !name || initialLoadKeyRef.current === requestedKey) return;
 
-  const refreshStorageKey = `${LAST_REFRESH_PREFIX}${region.toLowerCase()}|${realm.toLowerCase()}|${name.toLowerCase()}`;
+    const storedTimestamp = readRefreshTimestamp(refreshStorageKey);
+    lastRefreshRef.current = storedTimestamp;
+    setLastRefreshedAt(storedTimestamp);
+    if (initialLoadKeyRef.current !== null) {
+      dataRef.current = null;
+      setData(null);
+      setDataWarning(null);
+    }
+    integrationRequestKeyRef.current = requestedKey;
+    setRaiderIoIntegration(initialIntegrationState(true));
+    setWarcraftLogsIntegration(initialIntegrationState(false));
+    initialLoadKeyRef.current = requestedKey;
+    void fetchCharacterData(forceRefresh || isCharacterDataStale(storedTimestamp));
+  }, [fetchCharacterData, forceRefresh, name, realm, refreshStorageKey, region, requestedKey]);
+
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const raw = localStorage.getItem(refreshStorageKey);
-    const parsed = raw ? Number(raw) : 0;
-    setLastRefreshedAt(Number.isFinite(parsed) && parsed > 0 ? parsed : null);
-  }, [refreshStorageKey]);
+    if (!data) return;
 
-  if (loading) {
+    const refreshIfStale = () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      if (isCharacterDataStale(lastRefreshRef.current)) {
+        void fetchCharacterData(true, true);
+      }
+    };
+    const intervalId = window.setInterval(refreshIfStale, CHARACTER_DATA_TTL_MS);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') refreshIfStale();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [data, fetchCharacterData]);
+
+  if (loading && !data) {
     return (
       <div className="flex h-96 flex-col items-center justify-center gap-4">
-        <div className="h-10 w-10 animate-spin rounded-full border-2 border-zinc-800 border-t-gold" />
+        <div className="border-t-gold h-10 w-10 animate-spin rounded-full border-2 border-zinc-800" />
         <p className="text-sm font-medium text-zinc-500">Loading Character Profile...</p>
       </div>
     );
   }
 
-  if (error) {
+  if (error && !data) {
     return (
       <div className="mx-auto max-w-lg py-20 text-center">
         <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-red-500/10 text-red-500">
@@ -241,7 +523,7 @@ export default function CharacterClient() {
         <h2 className="mb-2 text-xl font-bold text-zinc-200">Character Not Found</h2>
         <p className="mb-6 text-zinc-500">{error}</p>
         <button
-          onClick={() => fetchCharacterData(false)}
+          onClick={() => fetchCharacterData(true)}
           className="rounded-lg bg-zinc-800 px-6 py-2 text-sm font-bold text-zinc-200 transition-colors hover:bg-zinc-700"
         >
           Try Again
@@ -250,31 +532,44 @@ export default function CharacterClient() {
     );
   }
 
+  if (!data) return null;
+
   const { profile } = data;
+  const profileName = getCharacterValueLabel(profile.name) || name;
+  const profileRealmName = getCharacterValueLabel(profile.realm) || realm;
+  const profileRealmSlug = objectSlug(profile.realm) || normalizeCharacterSlug(profileRealmName);
+  const profileClassName = getCharacterValueLabel(profile.character_class);
+  const profileRaceName = getCharacterValueLabel(profile.race);
+  const profileLevel = numberOrNull(profile.level);
+  const equippedItemLevel = numberOrNull(profile.equipped_item_level);
+  const averageItemLevel = numberOrNull(profile.average_item_level);
   const canonicalRegion = region.toLowerCase();
-  const canonicalRealm = String(profile.realm?.slug || realm).toLowerCase();
-  const canonicalName = String(profile.name || name).toLowerCase();
+  const canonicalRealm = profileRealmSlug || normalizeCharacterSlug(realm);
+  const canonicalName = profileName.toLowerCase();
   const currentKey = `${canonicalRegion}|${canonicalRealm}|${canonicalName}`;
   const isTrackedCharacter = trackedCharacterKeys.includes(currentKey);
   const rosterCharacter =
     rosterCharacters.find((char) => {
-      const charName = String(char.name || '').toLowerCase();
+      const charName = normalizeCharacterSlug(char.name);
       const charRealm = normalizeCharacterSlug(char.realm);
       const charRegion = String(char.region || '').toLowerCase();
       return (
-        charName === canonicalName && charRealm === canonicalRealm && charRegion === canonicalRegion
+        charName === normalizeCharacterSlug(profileName) &&
+        charRealm === canonicalRealm &&
+        charRegion === canonicalRegion
       );
     }) || null;
   const rosterWishlistHref = rosterCharacter
     ? buildWishlistHref({
-        name: rosterCharacter.name || profile.name,
-        realm: rosterCharacter.realm || profile.realm?.name || realm,
+        name: rosterCharacter.name || profileName,
+        realm: rosterCharacter.realm || profileRealmName,
         region: rosterCharacter.region || region,
         className:
           rosterCharacter.className ||
           rosterCharacter.class ||
           rosterCharacter.character_class?.name ||
-          profile.character_class?.name,
+          profileClassName ||
+          undefined,
       })
     : '';
   const characterMediaUrl = `${API_URL}/api/blizzard/character/${realm}/${name}/media/main?region=${region}`;
@@ -284,27 +579,31 @@ export default function CharacterClient() {
       <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-black tracking-tight text-white">{profile.name}</h1>
-            <span className="rounded-full bg-zinc-800 px-3 py-1 text-xs font-bold uppercase tracking-wider text-zinc-400">
-              Lv {profile.level} {profile.race.name} {profile.character_class.name}
+            <h1 className="text-3xl font-black tracking-tight text-white">{profileName}</h1>
+            <span className="rounded-full bg-zinc-800 px-3 py-1 text-xs font-bold tracking-wider text-zinc-400 uppercase">
+              {[
+                profileLevel !== null ? `Lv ${profileLevel}` : null,
+                profileRaceName,
+                profileClassName,
+              ]
+                .filter(Boolean)
+                .join(' ') || 'Profile details unavailable'}
             </span>
-            <div className="flex items-center gap-2 rounded-lg bg-gold/10 px-3 py-1 ring-1 ring-gold/20">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-gold/70">
+            <div className="bg-gold/10 ring-gold/20 flex items-center gap-2 rounded-lg px-3 py-1 ring-1">
+              <span className="text-gold/70 text-[10px] font-bold tracking-widest uppercase">
                 ILVL
               </span>
-              <span className="text-sm font-black text-gold">{profile.equipped_item_level}</span>
-              {profile.average_item_level !== profile.equipped_item_level && (
-                <span className="text-[11px] font-bold text-gold/40">
-                  ({profile.average_item_level})
-                </span>
+              <span className="text-gold text-sm font-black">{equippedItemLevel ?? '—'}</span>
+              {averageItemLevel !== null && averageItemLevel !== equippedItemLevel && (
+                <span className="text-gold/40 text-[11px] font-bold">({averageItemLevel})</span>
               )}
             </div>
             <button
               onClick={() => fetchCharacterData(true)}
-              disabled={loading}
+              disabled={loading || refreshing}
               className="ml-2 rounded border border-white/10 bg-black/20 px-3 py-1 text-xs font-bold text-zinc-200 backdrop-blur-sm hover:bg-white/10 active:scale-95 disabled:opacity-50"
             >
-              {loading ? 'Refreshing...' : 'Refresh'}
+              {loading || refreshing ? 'Refreshing...' : 'Refresh'}
             </button>
             {rosterWishlistHref ? (
               <Link
@@ -331,7 +630,7 @@ export default function CharacterClient() {
                   />
                 </button>
                 {simcMenuOpen ? (
-                  <div className="absolute right-0 top-8 z-40 min-w-[150px] rounded-md border border-white/15 bg-[#111317] p-1 shadow-xl">
+                  <div className="absolute top-8 right-0 z-40 min-w-[150px] rounded-md border border-white/15 bg-[#111317] p-1 shadow-xl">
                     <button
                       type="button"
                       onClick={() => {
@@ -395,23 +694,34 @@ export default function CharacterClient() {
             <p className="mt-1 text-xs text-red-400">Track Character failed: {trackError}</p>
           )}
           <p className="mt-1 font-medium text-zinc-500">
-            {profile.realm.name} - {region.toUpperCase()}
+            {profileRealmName} - {region.toUpperCase()}
           </p>
           {lastRefreshedAt ? (
             <p className="mt-1 text-xs text-zinc-500">
               Last refreshed at {new Date(lastRefreshedAt).toLocaleString()}
             </p>
           ) : null}
+          {refreshing ? (
+            <p className="mt-1 text-xs text-zinc-400" role="status">
+              Refreshing character data…
+            </p>
+          ) : null}
+          {dataWarning ? (
+            <p className="mt-1 text-xs text-amber-300" role="status">
+              {dataWarning}
+            </p>
+          ) : null}
         </div>
       </div>
 
       <CharacterPanel
-        name={profile.name}
-        realm={profile.realm.name}
+        name={profileName}
+        realm={profileRealmName}
         region={region}
-        characterClass={profile.character_class.name}
-        race={profile.race.name}
-        level={profile.level}
+        profile={profile}
+        characterClass={profileClassName || 'Unavailable'}
+        race={profileRaceName || 'Unavailable'}
+        level={profileLevel ?? 0}
         equipment={data.equipment}
         statistics={data.statistics}
         specializations={data.specializations}
@@ -421,13 +731,16 @@ export default function CharacterClient() {
         characterMediaUrl={characterMediaUrl}
         latestSimcInput={savedProfiles[0]?.simc_input || null}
         initialTab={initialTab}
+        raiderIoIntegration={raiderIoIntegration}
+        warcraftLogsIntegration={warcraftLogsIntegration}
+        onRefreshIntegrations={() => void fetchIntegrations(true)}
       />
       <ConfirmModal
         isOpen={deleteModalOpen}
         onClose={() => setDeleteModalOpen(false)}
         onConfirm={handleDeleteProfiles}
         title="Delete SimC Profiles"
-        message={`Are you sure you want to delete all saved SimC profiles for ${profile.name}? This action cannot be undone.`}
+        message={`Are you sure you want to delete all saved SimC profiles for ${profileName}? This action cannot be undone.`}
         confirmLabel="Delete"
         cancelLabel="Cancel"
         variant="danger"

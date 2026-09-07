@@ -8,6 +8,20 @@ Add new work under the `Unreleased` section. Stable bump and `promote-dev` relea
 
 ### Improvements
 
+#### Keep What’s New focused on the current major release
+
+The app's What's New feed now keeps every released minor and patch update from the installed major version visible, then resets to the new major version when the app moves forward.
+
+- Review the complete 6.x release series while running a 6.x build without losing earlier minor or patch notes after dismissing the popup.
+- Keep unreleased notes separate from the released major-version history while preserving the existing unread indicator.
+
+#### Make the public release notes easier to browse
+
+The GitHub Pages release-notes archive now presents a clean end-user view without maintainer release workflow details.
+
+- Choose a specific stable version to show only that release's notes, with a shareable version URL.
+- Open the linked GitHub release tag directly from each version heading.
+
 #### Keep simulation status updates usable during outages
 
 Result pages now keep the last successful simulation state visible while status requests retry with capped backoff and expose a Retry now action. Scenario toolbars use a compact owner-scoped status request and continue tracking active siblings until they finish.

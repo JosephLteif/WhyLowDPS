@@ -8,6 +8,8 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ### Changed
 
+- What's New now keeps every released minor and patch update from the installed major version visible and resets to the new major version when the app moves forward.
+- The GitHub Pages release-notes archive now hides maintainer workflow details and provides a version selector with shareable per-release URLs.
 - Result pages now keep the last successful simulation state visible during transient status failures, retry with capped backoff, and use compact owner-scoped polling for scenario siblings.
 - Multi-scenario submissions now preserve failed definitions for retry while routing successful jobs immediately and reporting per-scenario failures.
 - Dashboard refreshes request a bounded recent history page, history statistics use an aggregate storage query, and queue reorders remain effective across runner admission retries.

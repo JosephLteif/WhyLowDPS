@@ -1,11 +1,29 @@
 {
-  "contentRevision": "Unreleased-6cf7160b7520",
+  "contentRevision": "Unreleased-d145209b2bc0",
   "releases": [
     {
       "version": "Unreleased",
       "date": "",
       "title": "Upcoming changes",
       "entries": [
+        {
+          "category": "improvement",
+          "title": "Keep What’s New focused on the current major release",
+          "summary": "The app's What's New feed now keeps every released minor and patch update from the installed major version visible, then resets to the new major version when the app moves forward.",
+          "items": [
+            "Review the complete 6.x release series while running a 6.x build without losing earlier minor or patch notes after dismissing the popup.",
+            "Keep unreleased notes separate from the released major-version history while preserving the existing unread indicator."
+          ]
+        },
+        {
+          "category": "improvement",
+          "title": "Make the public release notes easier to browse",
+          "summary": "The GitHub Pages release-notes archive now presents a clean end-user view without maintainer release workflow details.",
+          "items": [
+            "Choose a specific stable version to show only that release's notes, with a shareable version URL.",
+            "Open the linked GitHub release tag directly from each version heading."
+          ]
+        },
         {
           "category": "improvement",
           "title": "Keep simulation status updates usable during outages",

@@ -1,6 +1,58 @@
 {
-  "contentRevision": "v6.0.1-5e1cdefe12bb",
+  "contentRevision": "Unreleased-6cf7160b7520",
   "releases": [
+    {
+      "version": "Unreleased",
+      "date": "",
+      "title": "Upcoming changes",
+      "entries": [
+        {
+          "category": "improvement",
+          "title": "Keep simulation status updates usable during outages",
+          "summary": "Result pages now keep the last successful simulation state visible while status requests retry with capped backoff and expose a Retry now action. Scenario toolbars use a compact owner-scoped status request and continue tracking active siblings until they finish."
+        },
+        {
+          "category": "improvement",
+          "title": "Recover partial scenario submissions",
+          "summary": "Multi-scenario submissions now keep successful jobs and failed definitions separate. A warning identifies failures and links back to the original setup so the remaining scenarios can be retried."
+        },
+        {
+          "category": "improvement",
+          "title": "Reduce dashboard and history refresh work",
+          "summary": "Dashboard refreshes request a bounded recent history page, while history statistics use an aggregate storage query instead of loading result archives."
+        },
+        {
+          "category": "improvement",
+          "title": "Preserve queue order across runner retries",
+          "summary": "Queue reorders now remain effective when admission waits cross a retry timeout, so the next job follows the order shown in Queue."
+        },
+        {
+          "category": "fix",
+          "title": "Protect active simulations from retention cleanup",
+          "summary": "History retention and clear operations now remove only unpinned terminal jobs, apply limits per owner, and leave pending, running, and paused simulations available."
+        },
+        {
+          "category": "fix",
+          "title": "Keep operational state network fresh",
+          "summary": "The service worker no longer serves cached operational status or game-data state while offline; immutable assets remain cacheable."
+        },
+        {
+          "category": "fix",
+          "title": "Preserve desktop sessions through transient auth outages",
+          "summary": "Desktop session restore now tolerates a short backend delay and transient authentication failures without clearing a valid session token."
+        },
+        {
+          "category": "fix",
+          "title": "Make onboarding and confirmation flows mode- and keyboard-aware",
+          "summary": "Light mode shows only applicable setup steps, and confirmation dialogs now manage focus, support Escape, and stay open when an asynchronous confirmation fails."
+        },
+        {
+          "category": "fix",
+          "title": "Reconcile partial history mutations",
+          "summary": "Bulk delete and pin actions now refresh authoritative state after mixed results and report failed items without losing successful updates."
+        }
+      ]
+    },
     {
       "version": "v6.0.1",
       "date": "2026-09-06",

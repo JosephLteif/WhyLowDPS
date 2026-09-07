@@ -6,7 +6,18 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ## [Unreleased]
 
-No unreleased changes yet.
+### Changed
+
+- Result pages now keep the last successful simulation state visible during transient status failures, retry with capped backoff, and use compact owner-scoped polling for scenario siblings.
+- Multi-scenario submissions now preserve failed definitions for retry while routing successful jobs immediately and reporting per-scenario failures.
+- Dashboard refreshes request a bounded recent history page, history statistics use an aggregate storage query, and queue reorders remain effective across runner admission retries.
+
+### Fixed
+
+- History retention and clear operations now remove only unpinned terminal jobs, apply limits per owner, and preserve pending, running, and paused simulations.
+- The service worker no longer serves cached operational status or game-data state while offline.
+- Desktop session restore now survives short backend delays and transient authentication failures without clearing a valid session token.
+- Light mode now shows only applicable onboarding steps, confirmation dialogs are keyboard-safe for async actions, and bulk history mutations reconcile partial failures against server state.
 
 ## [6.0.1] - 2026-09-06
 

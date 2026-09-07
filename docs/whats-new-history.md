@@ -6,7 +6,45 @@ Add new work under the `Unreleased` section. Stable bump and `promote-dev` relea
 
 ## Unreleased
 
-No unreleased changes yet.
+### Improvements
+
+#### Keep simulation status updates usable during outages
+
+Result pages now keep the last successful simulation state visible while status requests retry with capped backoff and expose a Retry now action. Scenario toolbars use a compact owner-scoped status request and continue tracking active siblings until they finish.
+
+#### Recover partial scenario submissions
+
+Multi-scenario submissions now keep successful jobs and failed definitions separate. A warning identifies failures and links back to the original setup so the remaining scenarios can be retried.
+
+#### Reduce dashboard and history refresh work
+
+Dashboard refreshes request a bounded recent history page, while history statistics use an aggregate storage query instead of loading result archives.
+
+#### Preserve queue order across runner retries
+
+Queue reorders now remain effective when admission waits cross a retry timeout, so the next job follows the order shown in Queue.
+
+### Bug fixes
+
+#### Protect active simulations from retention cleanup
+
+History retention and clear operations now remove only unpinned terminal jobs, apply limits per owner, and leave pending, running, and paused simulations available.
+
+#### Keep operational state network fresh
+
+The service worker no longer serves cached operational status or game-data state while offline; immutable assets remain cacheable.
+
+#### Preserve desktop sessions through transient auth outages
+
+Desktop session restore now tolerates a short backend delay and transient authentication failures without clearing a valid session token.
+
+#### Make onboarding and confirmation flows mode- and keyboard-aware
+
+Light mode shows only applicable setup steps, and confirmation dialogs now manage focus, support Escape, and stay open when an asynchronous confirmation fails.
+
+#### Reconcile partial history mutations
+
+Bulk delete and pin actions now refresh authoritative state after mixed results and report failed items without losing successful updates.
 
 ## v6.0.1 — 2026-09-06 — Release notes for v6.0.1
 

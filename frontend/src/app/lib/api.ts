@@ -705,6 +705,7 @@ export async function getHistoryStats(): Promise<HistoryStats> {
 export async function listSims(params?: {
   player?: string;
   realm?: string;
+  limit?: number;
   linked_only?: boolean;
   unlinked_only?: boolean;
   pinned_only?: boolean;
@@ -712,6 +713,7 @@ export async function listSims(params?: {
   const query = new URLSearchParams();
   if (params?.player) query.set('player', params.player);
   if (params?.realm) query.set('realm', params.realm);
+  if (params?.limit != null) query.set('limit', String(params.limit));
   if (params?.linked_only) query.set('linked_only', 'true');
   if (params?.unlinked_only) query.set('unlinked_only', 'true');
   if (params?.pinned_only) query.set('pinned_only', 'true');

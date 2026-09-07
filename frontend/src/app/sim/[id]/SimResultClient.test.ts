@@ -38,6 +38,7 @@ describe('simulation result polling helpers', () => {
   it('recognizes retryable status failures and caps retry delay', () => {
     expect(isTransientPollingError({ status: 503 })).toBe(true);
     expect(isTransientPollingError({ status: 404 })).toBe(false);
+    expect(isTransientPollingError({ status: 401 })).toBe(false);
     expect(isTransientPollingError({ code: 'NETWORK_UNAVAILABLE' })).toBe(true);
     expect(getStatusRetryDelay(1)).toBe(2000);
     expect(getStatusRetryDelay(6)).toBe(15000);

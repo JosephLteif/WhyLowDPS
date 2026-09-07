@@ -891,7 +891,10 @@ export default function SimResultClient({ initialJob, shared = false }: SimResul
         );
         // Keep the last known job visible and retry with a capped exponential
         // backoff so a temporary outage cannot strand the result page.
-        if (!jobRef.current || isActiveSimStatus(jobRef.current.status)) {
+        if (
+          isTransientPollingError(err) &&
+          (!jobRef.current || isActiveSimStatus(jobRef.current.status))
+        ) {
           schedulePoll(getStatusRetryDelay(retryAttempt));
         }
       }

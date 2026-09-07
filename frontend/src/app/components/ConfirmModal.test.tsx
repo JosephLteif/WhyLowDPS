@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import ConfirmModal from './ConfirmModal';
@@ -46,5 +46,61 @@ describe('ConfirmModal', () => {
     expect(onConfirm).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledTimes(2);
   });
-});
 
+  it('traps focus, handles Escape, and restores the opener focus', async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    const { rerender } = render(
+      <>
+        <button type="button">Open dialog</button>
+        <ConfirmModal
+          isOpen={false}
+          onClose={onClose}
+          onConfirm={vi.fn()}
+          title="Delete sim"
+          message="This cannot be undone."
+        />
+      </>
+    );
+
+    const opener = screen.getByRole('button', { name: 'Open dialog' });
+    opener.focus();
+    rerender(
+      <>
+        <button type="button">Open dialog</button>
+        <ConfirmModal
+          isOpen
+          onClose={onClose}
+          onConfirm={vi.fn()}
+          title="Delete sim"
+          message="This cannot be undone."
+        />
+      </>
+    );
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus());
+    expect(screen.getByRole('dialog')).toHaveAttribute('aria-modal', 'true');
+
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Confirm' })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
+    await user.keyboard('{Escape}');
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <>
+        <button type="button">Open dialog</button>
+        <ConfirmModal
+          isOpen={false}
+          onClose={onClose}
+          onConfirm={vi.fn()}
+          title="Delete sim"
+          message="This cannot be undone."
+        />
+      </>
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Open dialog' })).toHaveFocus()
+    );
+  });
+});

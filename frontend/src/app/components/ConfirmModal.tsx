@@ -1,11 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 
 interface ConfirmModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
   title: string;
   message: string;
   confirmLabel?: string;
@@ -24,6 +24,54 @@ export default function ConfirmModal({
   variant = 'danger',
 }: ConfirmModalProps) {
   const [loading, setLoading] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  const loadingRef = useRef(false);
+  const titleId = useId();
+  const descriptionId = useId();
+
+  useEffect(() => {
+    loadingRef.current = loading;
+  }, [loading]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
+    const focusTimer = window.setTimeout(() => cancelRef.current?.focus(), 0);
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        if (!loadingRef.current) {
+          event.preventDefault();
+          onClose();
+        }
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusable = Array.from(
+        dialogRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), [href]') || []
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.removeEventListener('keydown', handleKeyDown);
+      previouslyFocusedRef.current?.focus();
+    };
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -31,9 +79,12 @@ export default function ConfirmModal({
     setLoading(true);
     try {
       await onConfirm();
+      onClose();
+    } catch {
+      // Keep the dialog open so the caller can report the failure and the user
+      // can retry without losing the confirmation context.
     } finally {
       setLoading(false);
-      onClose();
     }
   };
 
@@ -42,18 +93,34 @@ export default function ConfirmModal({
       {/* Backdrop */}
       <div
         className="animate-in fade-in absolute inset-0 bg-black/60 backdrop-blur-sm duration-300"
-        onClick={onClose}
+        aria-hidden="true"
+        onClick={() => {
+          if (!loading) onClose();
+        }}
       />
 
       {/* Modal */}
-      <div className="animate-in fade-in zoom-in-95 relative w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-[#0c0c0e] p-6 shadow-2xl duration-300">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+        tabIndex={-1}
+        className="animate-in fade-in zoom-in-95 relative w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-[#0c0c0e] p-6 shadow-2xl duration-300"
+      >
         <div className="mb-6">
-          <h2 className="text-xl font-bold text-white">{title}</h2>
-          <p className="mt-2 text-sm text-zinc-400">{message}</p>
+          <h2 id={titleId} className="text-xl font-bold text-white">
+            {title}
+          </h2>
+          <p id={descriptionId} className="mt-2 text-sm text-zinc-400">
+            {message}
+          </p>
         </div>
 
         <div className="flex gap-3">
           <button
+            ref={cancelRef}
             type="button"
             onClick={onClose}
             disabled={loading}

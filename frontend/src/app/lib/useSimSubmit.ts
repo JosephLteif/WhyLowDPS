@@ -8,18 +8,18 @@ import type { CharacterStatisticsPayload } from './character-domain-types';
 import type { FightScenario } from './types';
 import { storeScenarioSiblings, clearScenarioSiblings } from './scenario-siblings';
 import { simResultHref } from './routes';
+import { simulationTypeRoute } from './simulation-routes';
 import { trackSimulations } from './sim-tracking';
 import { buildFightStylePayload } from './fight-style';
 import { normalizeLiveCharacterStats } from './stat-snapshot';
-import {
-  DEFAULT_SIM_IDLE_TIMEOUT_SECONDS,
-  DEFAULT_SIM_TIMEOUT_SECONDS,
-} from './sim-timeout';
+import { DEFAULT_SIM_IDLE_TIMEOUT_SECONDS, DEFAULT_SIM_TIMEOUT_SECONDS } from './sim-timeout';
 import {
   buildCurrentReturnUrl,
   registerSimReturnTarget,
   registerSimReturnTargets,
+  resolveSimAgainNavigation,
 } from './sim-return';
+import { useNotifications } from '../components/shared/NotificationSystem';
 
 interface UseSimSubmitOptions {
   /** API endpoint path, e.g. "/api/sim" */
@@ -42,6 +42,27 @@ interface UseSimSubmitOptions {
 export type SimSubmitOptions = {
   threadsOverride?: number;
 };
+
+export interface ScenarioSubmissionFailure {
+  scenario: FightScenario;
+  error: string;
+}
+
+export interface ScenarioSubmissionStatus {
+  submitted: Array<{
+    id: string;
+    fightStyle: string;
+    targetCount: number;
+    fightLength: number;
+  }>;
+  failed: ScenarioSubmissionFailure[];
+}
+
+function submissionErrorMessage(reason: unknown): string {
+  if (reason instanceof Error && reason.message.trim()) return reason.message;
+  if (typeof reason === 'string' && reason.trim()) return reason;
+  return 'Failed to submit this scenario.';
+}
 
 function normalizeName(name: string): string {
   return name.trim().toLowerCase();
@@ -80,7 +101,13 @@ function extractSimcIdentity(
 
     if (!name) {
       const cls = line.match(classLine);
-      if (cls && !['server', 'region', 'spec', 'talents', 'level', 'race', 'role'].includes(cls[1].toLowerCase())) name = cls[2];
+      if (
+        cls &&
+        !['server', 'region', 'spec', 'talents', 'level', 'race', 'role'].includes(
+          cls[1].toLowerCase()
+        )
+      )
+        name = cls[2];
     }
     if (!realm && line.toLowerCase().startsWith('server=')) {
       realm = line.slice(7).trim().replace(/^"|"$/g, '');
@@ -110,6 +137,7 @@ async function emitDesktopTrackedSims(
 
 export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: UseSimSubmitOptions) {
   const router = useRouter();
+  const { notify } = useNotifications();
   const { lightMode } = useAuth();
   const {
     simcInput,
@@ -147,11 +175,13 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
     simcPostCombos,
     simcFooter,
     scenarios,
+    removeScenario,
     clearScenarios,
   } = useSimContext();
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [submissionStatus, setSubmissionStatus] = useState<ScenarioSubmissionStatus | null>(null);
 
   const autoLinkJobToCharacter = useCallback(
     async (jobId: string) => {
@@ -207,231 +237,310 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
     }
   }, [lightMode, simcInput]);
 
-  const submit = useCallback(async ({ threadsOverride }: SimSubmitOptions = {}) => {
-    setError('');
+  const submit = useCallback(
+    async ({ threadsOverride }: SimSubmitOptions = {}) => {
+      setError('');
+      setSubmissionStatus(null);
 
-    if (validate) {
-      const err = validate();
-      if (err) {
-        setError(err);
-        return;
-      }
-    }
-
-    const pagePayload = await buildPayload();
-    if (pagePayload === null) return;
-    const isConsumableMatrix = pagePayload.sim_type === 'consumable_matrix';
-    let simAgainTarget: { returnUrl: string; pageKey?: string; state?: unknown } | null = null;
-    if (typeof window !== 'undefined') {
-      const returnUrl = (simAgain?.returnUrl || buildCurrentReturnUrl()).trim();
-      const pageKey = simAgain?.pageKey?.trim();
-      let state: unknown = undefined;
-      if (simAgain?.captureState) {
-        try {
-          state = simAgain.captureState();
-        } catch {
-          state = undefined;
+      if (validate) {
+        const err = validate();
+        if (err) {
+          setError(err);
+          return;
         }
       }
-      if (returnUrl) {
-        simAgainTarget = {
-          returnUrl,
-          ...(pageKey ? { pageKey } : {}),
-          ...(state !== undefined ? { state } : {}),
-        };
-      }
-    }
 
-    setSubmitting(true);
-    clearScenarioSiblings();
-
-    try {
-      const configs: FightScenario[] =
-        scenarios.length > 0 ? scenarios : [{ id: '', fightStyle, targetCount, fightLength }];
-
-      const batchId = scenarios.length > 0 ? createUuid() : undefined;
-      const baselineLiveStats = await fetchBaselineLiveStats();
-
-      const sharedPayload = {
-        ...pagePayload,
-        iterations: 10000,
-        target_error: 0.1,
-        threads: threadsOverride ?? threads,
-        sim_timeout_seconds: simTimeoutSeconds ?? DEFAULT_SIM_TIMEOUT_SECONDS,
-        sim_idle_timeout_seconds: simIdleTimeoutSeconds ?? DEFAULT_SIM_IDLE_TIMEOUT_SECONDS,
-        simc_channel: simcChannel || 'bundled',
-        ...(batchId ? { batch_id: batchId } : {}),
-        ...(selectedTalent ? { talents: selectedTalent } : {}),
-        ...(customApl ? { custom_apl: customApl } : {}),
-        ...(simcHeader ? { simc_header: simcHeader } : {}),
-        ...(simcBasePlayer ? { simc_base_player: simcBasePlayer } : {}),
-        ...(simcRaidActors ? { simc_raid_actors: simcRaidActors } : {}),
-        ...(simcPostCombos ? { simc_post_combos: simcPostCombos } : {}),
-        ...(simcFooter ? { simc_footer: simcFooter } : {}),
-        ...(includeTimeline ? { include_timeline: true } : { include_timeline: false }),
-        ...(externalBuffChaosBrand ? { external_buff_chaos_brand: true } : {}),
-        ...(externalBuffMysticTouch ? { external_buff_mystic_touch: true } : {}),
-        ...(externalBuffSkyfury ? { external_buff_skyfury: true } : {}),
-        ...(externalBuffPowerInfusion ? { external_buff_power_infusion: true } : {}),
-        ...(externalBuffBlessingOfBronze ? { external_buff_blessing_of_bronze: true } : {}),
-        ...(externalBuffAugmentation ? { external_buff_augmentation: true } : {}),
-        raid_buff_customized: true,
-        raid_buff_bloodlust: raidBuffBloodlust,
-        raid_buff_arcane_intellect: raidBuffArcaneIntellect,
-        raid_buff_power_word_fortitude: raidBuffPowerWordFortitude,
-        raid_buff_mark_of_the_wild: raidBuffMarkOfTheWild,
-        raid_buff_battle_shout: raidBuffBattleShout,
-        raid_buff_hunters_mark: raidBuffHuntersMark,
-        raid_buff_bleeding: raidBuffBleeding,
-        ...(!isConsumableMatrix && consumableFlask.trim()
-          ? { consumable_flask: consumableFlask.trim() }
-          : {}),
-        ...(!isConsumableMatrix && consumableFood.trim()
-          ? { consumable_food: consumableFood.trim() }
-          : {}),
-        ...(!isConsumableMatrix && consumablePotion.trim()
-          ? { consumable_potion: consumablePotion.trim() }
-          : {}),
-        ...(!isConsumableMatrix && consumableAugmentation.trim()
-          ? { consumable_augmentation: consumableAugmentation.trim() }
-          : {}),
-        ...(!isConsumableMatrix && consumableTemporaryEnchant.trim()
-          ? { consumable_temporary_enchant: consumableTemporaryEnchant.trim() }
-          : {}),
-        ...(baselineLiveStats ? { baseline_live_stats: baselineLiveStats } : {}),
-      };
-
-      const results = await Promise.allSettled(
-        configs.map(async (config) => {
-          return fetchJson<any>(`${API_URL}${endpoint}`, {
-            method: 'POST',
-            timeoutMs: 120_000,
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              ...sharedPayload,
-              fight_style: config.fightStyle,
-              ...buildFightStylePayload(config.fightStyle, config.targetCount, config.fightLength),
-            }),
-          });
-        })
-      );
-      const identity = extractSimcIdentity(simcInput);
-      const simType =
-        typeof pagePayload.sim_type === 'string' && pagePayload.sim_type.trim().length > 0
-          ? pagePayload.sim_type
-          : undefined;
-
-      if (scenarios.length === 0) {
-        const r = results[0];
-        if (r.status === 'fulfilled') {
-          trackSimulations([{ id: r.value.id, simType, playerName: identity?.name }]);
-          if (simAgainTarget) {
-            registerSimReturnTarget(r.value.id, simAgainTarget);
+      const pagePayload = await buildPayload();
+      if (pagePayload === null) return;
+      const isConsumableMatrix = pagePayload.sim_type === 'consumable_matrix';
+      let simAgainTarget: { returnUrl: string; pageKey?: string; state?: unknown } | null = null;
+      if (typeof window !== 'undefined') {
+        const returnUrl = (simAgain?.returnUrl || buildCurrentReturnUrl()).trim();
+        const pageKey = simAgain?.pageKey?.trim();
+        let state: unknown = undefined;
+        if (simAgain?.captureState) {
+          try {
+            state = simAgain.captureState();
+          } catch {
+            state = undefined;
           }
-          await emitDesktopTrackedSims([
-            { id: r.value.id, sim_type: simType, player_name: identity?.name },
-          ]);
-          void autoLinkJobToCharacter(r.value.id);
-          router.push(simResultHref(r.value.id));
-        } else {
-          throw r.reason;
         }
-      } else {
-        const siblings = configs
-          .map((config, i) => {
-            const r = results[i];
-            return r.status === 'fulfilled'
-              ? {
-                  id: r.value.id,
-                  fightStyle: config.fightStyle,
-                  targetCount: config.targetCount,
-                  fightLength: config.fightLength,
-                }
-              : null;
-          })
-          .filter((s): s is NonNullable<typeof s> => s !== null);
+        if (returnUrl) {
+          simAgainTarget = {
+            returnUrl,
+            ...(pageKey ? { pageKey } : {}),
+            ...(state !== undefined ? { state } : {}),
+          };
+        }
+      }
 
-        if (siblings.length > 0) {
-          trackSimulations(
-            siblings.map((s) => ({
-              id: s.id,
-              simType,
-              playerName: identity?.name,
-            }))
-          );
-          if (simAgainTarget) {
-            registerSimReturnTargets(
-              siblings.map((s) => s.id),
-              simAgainTarget
+      setSubmitting(true);
+      clearScenarioSiblings();
+
+      try {
+        const configs: FightScenario[] =
+          scenarios.length > 0 ? scenarios : [{ id: '', fightStyle, targetCount, fightLength }];
+
+        const batchId = scenarios.length > 0 ? createUuid() : undefined;
+        const baselineLiveStats = await fetchBaselineLiveStats();
+
+        const sharedPayload = {
+          ...pagePayload,
+          iterations: 10000,
+          target_error: 0.1,
+          threads: threadsOverride ?? threads,
+          sim_timeout_seconds: simTimeoutSeconds ?? DEFAULT_SIM_TIMEOUT_SECONDS,
+          sim_idle_timeout_seconds: simIdleTimeoutSeconds ?? DEFAULT_SIM_IDLE_TIMEOUT_SECONDS,
+          simc_channel: simcChannel || 'bundled',
+          ...(batchId ? { batch_id: batchId } : {}),
+          ...(selectedTalent ? { talents: selectedTalent } : {}),
+          ...(customApl ? { custom_apl: customApl } : {}),
+          ...(simcHeader ? { simc_header: simcHeader } : {}),
+          ...(simcBasePlayer ? { simc_base_player: simcBasePlayer } : {}),
+          ...(simcRaidActors ? { simc_raid_actors: simcRaidActors } : {}),
+          ...(simcPostCombos ? { simc_post_combos: simcPostCombos } : {}),
+          ...(simcFooter ? { simc_footer: simcFooter } : {}),
+          ...(includeTimeline ? { include_timeline: true } : { include_timeline: false }),
+          ...(externalBuffChaosBrand ? { external_buff_chaos_brand: true } : {}),
+          ...(externalBuffMysticTouch ? { external_buff_mystic_touch: true } : {}),
+          ...(externalBuffSkyfury ? { external_buff_skyfury: true } : {}),
+          ...(externalBuffPowerInfusion ? { external_buff_power_infusion: true } : {}),
+          ...(externalBuffBlessingOfBronze ? { external_buff_blessing_of_bronze: true } : {}),
+          ...(externalBuffAugmentation ? { external_buff_augmentation: true } : {}),
+          raid_buff_customized: true,
+          raid_buff_bloodlust: raidBuffBloodlust,
+          raid_buff_arcane_intellect: raidBuffArcaneIntellect,
+          raid_buff_power_word_fortitude: raidBuffPowerWordFortitude,
+          raid_buff_mark_of_the_wild: raidBuffMarkOfTheWild,
+          raid_buff_battle_shout: raidBuffBattleShout,
+          raid_buff_hunters_mark: raidBuffHuntersMark,
+          raid_buff_bleeding: raidBuffBleeding,
+          ...(!isConsumableMatrix && consumableFlask.trim()
+            ? { consumable_flask: consumableFlask.trim() }
+            : {}),
+          ...(!isConsumableMatrix && consumableFood.trim()
+            ? { consumable_food: consumableFood.trim() }
+            : {}),
+          ...(!isConsumableMatrix && consumablePotion.trim()
+            ? { consumable_potion: consumablePotion.trim() }
+            : {}),
+          ...(!isConsumableMatrix && consumableAugmentation.trim()
+            ? { consumable_augmentation: consumableAugmentation.trim() }
+            : {}),
+          ...(!isConsumableMatrix && consumableTemporaryEnchant.trim()
+            ? { consumable_temporary_enchant: consumableTemporaryEnchant.trim() }
+            : {}),
+          ...(baselineLiveStats ? { baseline_live_stats: baselineLiveStats } : {}),
+        };
+
+        const results = await Promise.allSettled(
+          configs.map(async (config) => {
+            return fetchJson<any>(`${API_URL}${endpoint}`, {
+              method: 'POST',
+              timeoutMs: 120_000,
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                ...sharedPayload,
+                fight_style: config.fightStyle,
+                ...buildFightStylePayload(
+                  config.fightStyle,
+                  config.targetCount,
+                  config.fightLength
+                ),
+              }),
+            });
+          })
+        );
+        const identity = extractSimcIdentity(simcInput);
+        const simType =
+          typeof pagePayload.sim_type === 'string' && pagePayload.sim_type.trim().length > 0
+            ? pagePayload.sim_type
+            : undefined;
+
+        if (scenarios.length === 0) {
+          const r = results[0];
+          if (r.status === 'fulfilled' && typeof r.value?.id === 'string' && r.value.id.trim()) {
+            trackSimulations([{ id: r.value.id, simType, playerName: identity?.name }]);
+            if (simAgainTarget) {
+              registerSimReturnTarget(r.value.id, simAgainTarget);
+            }
+            await emitDesktopTrackedSims([
+              { id: r.value.id, sim_type: simType, player_name: identity?.name },
+            ]);
+            void autoLinkJobToCharacter(r.value.id);
+            router.push(simResultHref(r.value.id));
+          } else {
+            throw r.status === 'rejected'
+              ? r.reason
+              : new Error('The server did not return a simulation ID.');
+          }
+        } else {
+          const submitted = configs
+            .map((config, i) => {
+              const r = results[i];
+              return r.status === 'fulfilled' &&
+                typeof r.value?.id === 'string' &&
+                r.value.id.trim()
+                ? {
+                    id: r.value.id,
+                    fightStyle: config.fightStyle,
+                    targetCount: config.targetCount,
+                    fightLength: config.fightLength,
+                  }
+                : null;
+            })
+            .filter((s): s is NonNullable<typeof s> => s !== null);
+          const failed = configs
+            .map((config, i) => {
+              const r = results[i];
+              if (
+                r.status === 'fulfilled' &&
+                typeof r.value?.id === 'string' &&
+                r.value.id.trim()
+              ) {
+                return null;
+              }
+              return {
+                scenario: config,
+                error:
+                  r.status === 'rejected'
+                    ? submissionErrorMessage(r.reason)
+                    : 'The server did not return a simulation ID.',
+              } satisfies ScenarioSubmissionFailure;
+            })
+            .filter((failure): failure is ScenarioSubmissionFailure => failure !== null);
+
+          if (submitted.length > 0) {
+            trackSimulations(
+              submitted.map((s) => ({
+                id: s.id,
+                simType,
+                playerName: identity?.name,
+              }))
+            );
+            if (simAgainTarget) {
+              registerSimReturnTargets(
+                submitted.map((s) => s.id),
+                simAgainTarget
+              );
+            }
+            await emitDesktopTrackedSims(
+              submitted.map((s) => ({
+                id: s.id,
+                sim_type: simType,
+                player_name: identity?.name,
+              }))
+            );
+            submitted.forEach((s) => {
+              void autoLinkJobToCharacter(s.id);
+            });
+            storeScenarioSiblings(submitted);
+            setSubmissionStatus({ submitted, failed });
+
+            // Keep failed definitions in the shared form state so a retry only
+            // resubmits scenarios that did not receive a job ID.
+            configs.forEach((config, index) => {
+              const result = results[index];
+              if (
+                result.status === 'fulfilled' &&
+                typeof result.value?.id === 'string' &&
+                result.value.id.trim()
+              ) {
+                removeScenario(config.id);
+              }
+            });
+
+            const firstSubmittedId = submitted[0].id;
+            if (failed.length > 0) {
+              const failedCount = failed.length;
+              const retry = () => {
+                const returnUrl =
+                  resolveSimAgainNavigation(firstSubmittedId) ||
+                  simAgainTarget?.returnUrl ||
+                  simulationTypeRoute(simType);
+                if (returnUrl) router.push(returnUrl);
+              };
+              notify({
+                title: `${failedCount} scenario${failedCount === 1 ? '' : 's'} failed to submit`,
+                description: `${submitted.length} scenario${submitted.length === 1 ? '' : 's'} started. Failed: ${failed
+                  .map((failure) => failure.error)
+                  .join(
+                    ' · '
+                  )} Retry the remaining scenario${failedCount === 1 ? '' : 's'} from the original setup.`,
+                variant: 'warning',
+                durationMs: 12000,
+                action: { label: 'Retry failed', onClick: retry },
+                dedupeKey: `scenario-submit:${firstSubmittedId}`,
+              });
+            } else {
+              clearScenarios();
+            }
+            router.push(simResultHref(firstSubmittedId));
+          } else {
+            setSubmissionStatus({ submitted: [], failed });
+            throw new Error(
+              failed.length === 1
+                ? `Scenario submission failed: ${failed[0].error}`
+                : `All ${failed.length} scenario submissions failed: ${failed
+                    .map((failure) => failure.error)
+                    .join(' · ')}`
             );
           }
-          await emitDesktopTrackedSims(
-            siblings.map((s) => ({
-              id: s.id,
-              sim_type: simType,
-              player_name: identity?.name,
-            }))
-          );
-          siblings.forEach((s) => {
-            void autoLinkJobToCharacter(s.id);
-          });
-          storeScenarioSiblings(siblings);
-          clearScenarios();
-          router.push(simResultHref(siblings[0].id));
-        } else {
-          throw new Error('All scenario submissions failed');
         }
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Failed to submit sim');
+      } finally {
+        setSubmitting(false);
       }
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to submit sim');
-    } finally {
-      setSubmitting(false);
-    }
-  }, [
-    endpoint,
-    buildPayload,
-    validate,
-    router,
-    fightStyle,
-    threads,
-    selectedTalent,
-    targetCount,
-    fightLength,
-    customApl,
-    simcChannel,
-    includeTimeline,
-    externalBuffChaosBrand,
-    externalBuffMysticTouch,
-    externalBuffSkyfury,
-    externalBuffPowerInfusion,
-    externalBuffBlessingOfBronze,
-    externalBuffAugmentation,
-    raidBuffBloodlust,
-    raidBuffArcaneIntellect,
-    raidBuffPowerWordFortitude,
-    raidBuffMarkOfTheWild,
-    raidBuffBattleShout,
-    raidBuffHuntersMark,
-    raidBuffBleeding,
-    consumableFlask,
-    consumableFood,
-    consumablePotion,
-    consumableAugmentation,
-    consumableTemporaryEnchant,
-    simcHeader,
-    simcBasePlayer,
-    simcRaidActors,
-    simcPostCombos,
-    simcFooter,
-    scenarios,
-    clearScenarios,
-    autoLinkJobToCharacter,
-    fetchBaselineLiveStats,
-    simAgain,
-    simcInput,
-    simTimeoutSeconds,
-    simIdleTimeoutSeconds,
-  ]);
+    },
+    [
+      endpoint,
+      buildPayload,
+      validate,
+      router,
+      fightStyle,
+      threads,
+      selectedTalent,
+      targetCount,
+      fightLength,
+      customApl,
+      simcChannel,
+      includeTimeline,
+      externalBuffChaosBrand,
+      externalBuffMysticTouch,
+      externalBuffSkyfury,
+      externalBuffPowerInfusion,
+      externalBuffBlessingOfBronze,
+      externalBuffAugmentation,
+      raidBuffBloodlust,
+      raidBuffArcaneIntellect,
+      raidBuffPowerWordFortitude,
+      raidBuffMarkOfTheWild,
+      raidBuffBattleShout,
+      raidBuffHuntersMark,
+      raidBuffBleeding,
+      consumableFlask,
+      consumableFood,
+      consumablePotion,
+      consumableAugmentation,
+      consumableTemporaryEnchant,
+      simcHeader,
+      simcBasePlayer,
+      simcRaidActors,
+      simcPostCombos,
+      simcFooter,
+      scenarios,
+      removeScenario,
+      clearScenarios,
+      autoLinkJobToCharacter,
+      fetchBaselineLiveStats,
+      simAgain,
+      simcInput,
+      simTimeoutSeconds,
+      simIdleTimeoutSeconds,
+      notify,
+    ]
+  );
 
   const buttonLabel = useCallback(
     (defaultLabel: string) =>
@@ -441,5 +550,5 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
     [scenarios.length]
   );
 
-  return { submit, submitting, error, setError, buttonLabel };
+  return { submit, submitting, error, setError, buttonLabel, submissionStatus };
 }

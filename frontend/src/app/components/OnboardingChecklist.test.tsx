@@ -10,6 +10,7 @@ const apiMocks = vi.hoisted(() => ({
   listCharacterProfiles: vi.fn(),
   listSims: vi.fn(),
 }));
+const authState = vi.hoisted(() => ({ lightMode: false }));
 
 vi.mock('next/link', () => ({
   default: ({ href, children }: { href: string; children: ReactNode }) => (
@@ -18,7 +19,7 @@ vi.mock('next/link', () => ({
 }));
 
 vi.mock('./AuthContext', () => ({
-  useAuth: () => ({ lightMode: false, checkCredentialsStatus: checkCredentialsStatusMock }),
+  useAuth: () => ({ lightMode: authState.lightMode, checkCredentialsStatus: checkCredentialsStatusMock }),
 }));
 
 vi.mock('../lib/api', () => ({
@@ -34,6 +35,7 @@ vi.mock('../lib/readiness', () => ({
 
 describe('OnboardingChecklist', () => {
   beforeEach(() => {
+    authState.lightMode = false;
     checkCredentialsStatusMock.mockReset();
     checkCredentialsStatusMock.mockResolvedValue({ globally_configured: false });
     apiMocks.fetchJson.mockReset();
@@ -74,5 +76,21 @@ describe('OnboardingChecklist', () => {
     expect(
       screen.getByRole('link', { name: /connect blizzard for character data/i })
     ).toHaveAttribute('href', '/settings?tab=integrations');
+  });
+
+  it('hides unavailable credential setup in Light mode and counts only applicable steps', async () => {
+    authState.lightMode = true;
+    render(<OnboardingChecklist />);
+
+    await waitFor(() =>
+      expect(screen.getByText('Finish setting up WhyLowDPS')).toBeInTheDocument()
+    );
+
+    expect(screen.getByText('1 of 3 steps complete.')).toBeInTheDocument();
+    expect(screen.queryByText('Connect Blizzard for character data')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /game data is ready/i })).toHaveAttribute(
+      'href',
+      '/quick-sim'
+    );
   });
 });

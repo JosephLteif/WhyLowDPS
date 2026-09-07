@@ -2,7 +2,16 @@ const STATIC_CACHE = 'whylowdps-static-v1';
 const DATA_CACHE = 'whylowdps-data-v1';
 const OFFLINE_URL = '/offline.html';
 
-const SAFE_GET_PREFIXES = ['/api/data/', '/api/game-data/'];
+// Only cache immutable or explicitly snapshot-backed data. Operational status
+// endpoints must remain network-fresh so an old "ready" response cannot mask
+// a missing or failed backend.
+const SAFE_GET_PREFIXES = [
+  '/api/data/images/',
+  '/api/data/instance-images/',
+  '/api/data/static/',
+  '/api/data/wowhead-zones-index',
+  '/api/game-data/static/',
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

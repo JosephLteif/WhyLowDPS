@@ -9,27 +9,36 @@ const release = (version: string): ChangelogRelease => ({
 });
 
 describe('changelog release selection', () => {
-  const releases = [release('6.0.1'), release('6.0.0'), release('5.0.1')];
+  const releases = [
+    release('7.0.0'),
+    release('6.5.0'),
+    release('6.4.2'),
+    release('6.0.0'),
+    release('5.0.1'),
+  ];
 
-  it('includes the current major release for a fresh install on a patch', () => {
-    expect(
-      getChangelogReleasesToShow(releases, '6.0.1', null).map(({ version }) => version)
-    ).toEqual(['6.0.1', '6.0.0']);
+  it('shows every current-major release through the installed version', () => {
+    expect(getChangelogReleasesToShow(releases, '6.5.0').map(({ version }) => version)).toEqual([
+      '6.5.0',
+      '6.4.2',
+      '6.0.0',
+    ]);
   });
 
-  it('shows only releases newer than the last seen version', () => {
-    expect(
-      getChangelogReleasesToShow(releases, '6.0.1', '5.0.1').map(({ version }) => version)
-    ).toEqual(['6.0.1', '6.0.0']);
-    expect(
-      getChangelogReleasesToShow(releases, '6.0.1', '6.0.0').map(({ version }) => version)
-    ).toEqual(['6.0.1']);
+  it('does not show another major release or future releases', () => {
+    expect(getChangelogReleasesToShow(releases, '6.4.2').map(({ version }) => version)).toEqual([
+      '6.4.2',
+      '6.0.0',
+    ]);
+    expect(getChangelogReleasesToShow(releases, '7.0.0').map(({ version }) => version)).toEqual([
+      '7.0.0',
+    ]);
   });
 
   it('keeps unreleased notes ahead of versioned releases', () => {
     const withUnreleased = [release('Unreleased'), ...releases];
     expect(
-      getChangelogReleasesToShow(withUnreleased, '6.0.1', '6.0.0').map(({ version }) => version)
-    ).toEqual(['Unreleased', '6.0.1']);
+      getChangelogReleasesToShow(withUnreleased, '6.5.0').map(({ version }) => version)
+    ).toEqual(['Unreleased', '6.5.0', '6.4.2', '6.0.0']);
   });
 });

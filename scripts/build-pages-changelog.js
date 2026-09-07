@@ -10,6 +10,112 @@ function escapeHtml(value) {
     .replaceAll("'", '&#39;');
 }
 
+const INTERNAL_RELEASE_NOTE_TITLES = new Set([
+  'Keep stable release notes synchronized',
+  'Rework the release pipeline',
+  'Keep source-mode release notes current',
+]);
+
+function parseStableReleaseHeading(line) {
+  const match = line.match(/^##\s+(v\d+\.\d+\.\d+)(?:\s+—\s+(.+))?$/);
+  return match ? { version: match[1], suffix: match[2]?.trim() || '' } : null;
+}
+
+function trimBlankLines(lines) {
+  let start = 0;
+  let end = lines.length;
+  while (start < end && lines[start].trim() === '') start += 1;
+  while (end > start && lines[end - 1].trim() === '') end -= 1;
+  return lines.slice(start, end);
+}
+
+function filterPublicReleaseSection(section) {
+  const categories = [];
+  let category = null;
+
+  const finishCategory = () => {
+    if (category) categories.push(category);
+    category = null;
+  };
+
+  for (const line of section.lines.slice(1)) {
+    const heading = line.match(/^###\s+(.+)$/);
+    if (heading) {
+      finishCategory();
+      category = { heading: line, lines: [] };
+      continue;
+    }
+    if (category) category.lines.push(line);
+  }
+  finishCategory();
+
+  const publicCategories = categories
+    .map((currentCategory) => {
+      const entries = [];
+      let entry = null;
+
+      const finishEntry = () => {
+        if (entry && !INTERNAL_RELEASE_NOTE_TITLES.has(entry.title)) entries.push(entry);
+        entry = null;
+      };
+
+      for (const line of currentCategory.lines) {
+        const heading = line.match(/^####\s+(.+)$/);
+        if (heading) {
+          finishEntry();
+          entry = { title: heading[1].trim(), lines: [] };
+          continue;
+        }
+        if (entry) entry.lines.push(line);
+      }
+      finishEntry();
+
+      return entries.length > 0 ? { heading: currentCategory.heading, entries } : null;
+    })
+    .filter(Boolean);
+
+  if (publicCategories.length === 0) return null;
+
+  const lines = [section.lines[0]];
+  for (const currentCategory of publicCategories) {
+    lines.push('', currentCategory.heading);
+    for (const entry of currentCategory.entries) {
+      lines.push('', `#### ${entry.title}`, ...trimBlankLines(entry.lines));
+    }
+  }
+  return lines.join('\n');
+}
+
+function getPublicReleaseSections(markdown) {
+  const sections = [];
+  let section = null;
+
+  const finishSection = () => {
+    if (!section) return;
+    const publicMarkdown = filterPublicReleaseSection(section);
+    if (publicMarkdown) sections.push({ ...section.release, markdown: publicMarkdown });
+    section = null;
+  };
+
+  for (const line of markdown.replace(/\r\n/g, '\n').split('\n')) {
+    const release = parseStableReleaseHeading(line);
+    if (release) {
+      finishSection();
+      section = { release, lines: [line] };
+      continue;
+    }
+
+    if (/^##\s+/.test(line)) {
+      finishSection();
+      continue;
+    }
+
+    if (section) section.lines.push(line);
+  }
+  finishSection();
+  return sections;
+}
+
 function renderInline(value) {
   const escaped = escapeHtml(value);
   return escaped
@@ -50,6 +156,7 @@ function renderMarkdown(markdown) {
   let paragraph = [];
   let list = [];
   let table = [];
+  let releaseSectionOpen = false;
 
   const flushParagraph = () => {
     if (paragraph.length > 0) {
@@ -89,6 +196,23 @@ function renderMarkdown(markdown) {
       flushBlocks();
       const level = heading[1].length;
       const content = heading[2].trim();
+      const release = level === 2 ? parseStableReleaseHeading(`## ${content}`) : null;
+      if (release) {
+        if (releaseSectionOpen) output.push('</section>');
+        const releaseId = `release-${release.version.replaceAll('.', '-')}`;
+        output.push(
+          `<section class="history-release" data-release-version="${escapeHtml(release.version)}">`
+        );
+        output.push(
+          `<h2 id="${releaseId}"><a class="history-release-link" href="https://github.com/JosephLteif/simcraft/releases/tag/${release.version}" rel="noopener noreferrer" target="_blank">${escapeHtml(release.version)}</a>${release.suffix ? ` — ${renderInline(release.suffix)}` : ''}</h2>`
+        );
+        releaseSectionOpen = true;
+        continue;
+      }
+      if (level === 2 && releaseSectionOpen) {
+        output.push('</section>');
+        releaseSectionOpen = false;
+      }
       const id = level === 2 ? ` id="${escapeHtml(content.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''))}"` : '';
       output.push(`<h${level}${id}>${renderInline(content)}</h${level}>`);
       continue;
@@ -115,14 +239,20 @@ function renderMarkdown(markdown) {
   }
 
   flushBlocks();
+  if (releaseSectionOpen) output.push('</section>');
   return output.join('\n');
 }
 
 function buildChangelogPage(markdown) {
-  const lines = markdown.replace(/\r\n/g, '\n').split('\n');
-  const titleIndex = lines.findIndex((line) => /^#\s+/.test(line));
-  const title = titleIndex >= 0 ? lines[titleIndex].replace(/^#\s+/, '').trim() : 'What\'s New History';
-  const body = renderMarkdown(titleIndex >= 0 ? lines.slice(titleIndex + 1).join('\n') : markdown);
+  const title = "What's New";
+  const publicReleases = getPublicReleaseSections(markdown);
+  const body = renderMarkdown(
+    publicReleases.map((release) => release.markdown).join('\n\n') || 'No release notes are available yet.'
+  );
+  const releaseOptions = publicReleases
+    .map((release) => `<option value="${escapeHtml(release.version)}">${escapeHtml(release.version)}</option>`)
+    .join('\n');
+  const releaseCount = publicReleases.length;
 
   return `<!doctype html>
 <html lang="en">
@@ -130,7 +260,7 @@ function buildChangelogPage(markdown) {
   <meta charset="utf-8" />
   <meta content="width=device-width, initial-scale=1" name="viewport" />
   <meta content="#09090b" name="theme-color" />
-  <meta content="The WhyLowDPS versioned release history." name="description" />
+  <meta content="Browse WhyLowDPS release notes by version." name="description" />
   <title>${escapeHtml(title)} | WhyLowDPS</title>
   <link href="https://josephlteif.github.io/WhyLowDPS/changelog.html" rel="canonical" />
   <link href="./favicon.ico" rel="icon" sizes="any" />
@@ -159,14 +289,24 @@ function buildChangelogPage(markdown) {
 <main id="main-content" class="history-page">
   <div class="container narrow-container">
     <header class="history-hero">
-      <p class="eyebrow">Release archive</p>
+      <p class="eyebrow">Release notes</p>
       <h1>${escapeHtml(title)}</h1>
-      <p>The latest update appears in the app&apos;s What&apos;s New popup. This page preserves the full versioned history.</p>
+      <p>See what changed in each WhyLowDPS release. Choose a version below to jump directly to its notes.</p>
     </header>
+    <div class="history-filter">
+      <div class="history-filter-control">
+        <label for="release-version">Browse a version</label>
+        <select id="release-version" aria-describedby="release-filter-status">
+          <option value="all">All releases</option>
+${releaseOptions}
+        </select>
+      </div>
+      <p id="release-filter-status" class="history-filter-status" aria-live="polite">Showing all ${releaseCount} releases.</p>
+    </div>
     <article class="history-content">
 ${body}
     </article>
-    <p class="history-source">Source: <a href="https://github.com/JosephLteif/simcraft/blob/master/docs/whats-new-history.md" rel="noopener noreferrer" target="_blank">docs/whats-new-history.md</a></p>
+    <p class="history-source">Release tags and downloads are available on <a href="https://github.com/JosephLteif/simcraft/releases" rel="noopener noreferrer" target="_blank">GitHub Releases</a>.</p>
   </div>
 </main>
 
@@ -188,6 +328,43 @@ ${body}
   </div>
   <p class="container legal">Not affiliated with Blizzard Entertainment, SimulationCraft, or Raidbots.</p>
 </footer>
+<script>
+(() => {
+  const selector = document.getElementById('release-version');
+  const status = document.getElementById('release-filter-status');
+  const releases = Array.from(document.querySelectorAll('.history-release'));
+  if (!selector || !status || releases.length === 0) return;
+
+  const availableVersions = new Set(releases.map((release) => release.dataset.releaseVersion));
+  const update = (requestedVersion, updateUrl) => {
+    const version = requestedVersion && availableVersions.has(requestedVersion) ? requestedVersion : 'all';
+    selector.value = version;
+    releases.forEach((release) => {
+      release.hidden = version !== 'all' && release.dataset.releaseVersion !== version;
+    });
+    status.textContent = version === 'all'
+      ? 'Showing all ' + releases.length + ' releases.'
+      : 'Showing ' + version + '.';
+
+    if (updateUrl) {
+      const url = new URL(window.location.href);
+      if (version === 'all') url.searchParams.delete('version');
+      else url.searchParams.set('version', version);
+      window.history.replaceState(null, '', url.pathname + url.search + url.hash);
+    }
+  };
+
+  selector.addEventListener('change', () => {
+    update(selector.value, true);
+    if (selector.value !== 'all') {
+      const release = releases.find((candidate) => candidate.dataset.releaseVersion === selector.value);
+      release?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
+
+  update(new URLSearchParams(window.location.search).get('version'), false);
+})();
+</script>
 </body>
 </html>
 `;

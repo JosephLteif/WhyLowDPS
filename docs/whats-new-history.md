@@ -1,6 +1,6 @@
 # What's New History
 
-This is the append-only archive for the public GitHub Pages changelog. The app popup shows updates since the user's last seen version, including major-release highlights when a user skips directly to a later patch; older versions remain available on the Pages archive and at their repository release tags.
+This is the append-only archive for the public GitHub Pages changelog. The app popup shows all released updates from the app's current major version, plus unreleased notes when available; it resets to the next major version when the app moves forward. Older versions remain available on the Pages archive and at their repository release tags.
 
 Add new work under the `Unreleased` section. Stable bump and `promote-dev` releases promote that section to the selected version and date, synchronize the app data, and update `master` for GitHub Pages. `republish` only rebuilds an existing release tag.
 

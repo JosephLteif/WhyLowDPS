@@ -329,6 +329,8 @@ pub(super) struct ListSimsQuery {
     pub unlinked_only: bool,
     #[serde(default)]
     pub pinned_only: bool,
+    #[serde(default)]
+    pub limit: Option<usize>,
 }
 
 #[derive(Deserialize)]
@@ -583,6 +585,7 @@ mod tests {
         assert!(!list_sims.linked_only);
         assert!(!list_sims.unlinked_only);
         assert!(!list_sims.pinned_only);
+        assert_eq!(list_sims.limit, None);
 
         let logs: LogsQuery = serde_json::from_value(json!({})).expect("logs query");
         assert_eq!(logs.after, 0);

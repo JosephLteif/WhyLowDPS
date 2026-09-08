@@ -1,7 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
-use super::JobStorage;
+use super::{JobStorage, SimStatusSummary};
 use crate::models::{
     extract_result_summary, AppUser, Job, JobStatus, JobSummary, SavedCharacterProfile, SavedRoute,
 };
@@ -38,6 +38,26 @@ impl MemoryStorage {
             auth_sessions: Mutex::new(HashMap::new()),
         }
     }
+
+    fn prune_terminal_jobs(jobs: &mut HashMap<String, Job>, owner_id: &str, limit: usize) {
+        let mut entries: Vec<(String, String)> = jobs
+            .iter()
+            .filter(|(_, job)| {
+                job.owner_id == owner_id
+                    && !job.pinned
+                    && matches!(
+                        &job.status,
+                        JobStatus::Done | JobStatus::Failed | JobStatus::Cancelled
+                    )
+            })
+            .map(|(id, job)| (id.clone(), job.created_at.clone()))
+            .collect();
+        entries.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
+        let to_remove = entries.len().saturating_sub(limit);
+        for (id, _) in entries.into_iter().take(to_remove) {
+            jobs.remove(&id);
+        }
+    }
 }
 
 impl JobStorage for MemoryStorage {
@@ -55,19 +75,7 @@ impl JobStorage for MemoryStorage {
         }
         jobs.insert(job.id.clone(), job);
         let limit = *self.max_jobs.lock().unwrap();
-        if jobs.values().filter(|job| job.owner_id == owner_id).count() > limit {
-            let mut entries: Vec<(String, String)> = jobs
-                .iter()
-                .filter(|(_, j)| j.owner_id == owner_id && !j.pinned)
-                .map(|(id, j)| (id.clone(), j.created_at.clone()))
-                .collect();
-            entries.sort_by(|a, b| a.1.cmp(&b.1));
-            let unpinned_count = entries.len();
-            let to_remove = unpinned_count.saturating_sub(limit);
-            for (id, _) in entries.into_iter().take(to_remove) {
-                jobs.remove(&id);
-            }
-        }
+        Self::prune_terminal_jobs(&mut jobs, &owner_id, limit);
     }
 
     fn get(&self, id: &str) -> Option<Job> {
@@ -160,6 +168,54 @@ impl JobStorage for MemoryStorage {
             });
         }
         results
+    }
+
+    fn list_status_owned(&self, owner_id: &str, ids: &[String]) -> Vec<SimStatusSummary> {
+        if ids.is_empty() {
+            return Vec::new();
+        }
+
+        let jobs = self.jobs.lock().unwrap();
+        let mut pending: Vec<&Job> = jobs
+            .values()
+            .filter(|job| job.owner_id == owner_id && job.status == JobStatus::Pending)
+            .collect();
+        pending.sort_by(|a, b| {
+            a.queue_order
+                .cmp(&b.queue_order)
+                .then_with(|| a.created_at.cmp(&b.created_at))
+                .then_with(|| a.id.cmp(&b.id))
+        });
+
+        let queue_positions: HashMap<&str, usize> = pending
+            .iter()
+            .enumerate()
+            .map(|(index, job)| (job.id.as_str(), index + 1))
+            .collect();
+
+        ids.iter()
+            .filter_map(|id| {
+                let job = jobs.get(id).filter(|job| job.owner_id == owner_id)?;
+                let linked_name = job.linked_name.clone();
+                let player_name = linked_name
+                    .clone()
+                    .or_else(|| extract_result_summary(&None, &job.simc_input).player_name);
+                Some(SimStatusSummary {
+                    id: job.id.clone(),
+                    status: job.status.clone(),
+                    progress: if job.status == JobStatus::Done {
+                        100
+                    } else {
+                        job.progress_pct
+                    },
+                    queue_position: queue_positions.get(job.id.as_str()).copied(),
+                    created_at: job.created_at.clone(),
+                    sim_type: job.sim_type.clone(),
+                    player_name,
+                    linked_name,
+                })
+            })
+            .collect()
     }
 
     fn list_queue(&self, owner_id: Option<&str>) -> Vec<JobSummary> {
@@ -408,11 +464,23 @@ impl JobStorage for MemoryStorage {
             .sum()
     }
 
+    fn get_history_stats_owned(&self, owner_id: &str) -> (usize, u64) {
+        let jobs = self.jobs.lock().unwrap();
+        jobs.values()
+            .filter(|job| job.owner_id == owner_id)
+            .fold((0, 0), |(count, size), job| {
+                (count + 1, size.saturating_add(job.estimate_size()))
+            })
+    }
+
     fn clear_history_owned(&self, owner_id: &str) {
-        self.jobs
-            .lock()
-            .unwrap()
-            .retain(|_, job| job.owner_id != owner_id);
+        self.jobs.lock().unwrap().retain(|_, job| {
+            job.owner_id != owner_id
+                || !matches!(
+                    &job.status,
+                    JobStatus::Done | JobStatus::Failed | JobStatus::Cancelled
+                )
+        });
     }
 
     fn get_max_jobs(&self) -> usize {
@@ -428,18 +496,9 @@ impl JobStorage for MemoryStorage {
         drop(mj);
 
         let mut jobs = self.jobs.lock().unwrap();
-        if jobs.len() > limit {
-            let mut entries: Vec<(String, String)> = jobs
-                .iter()
-                .filter(|(_, j)| !j.pinned)
-                .map(|(id, j)| (id.clone(), j.created_at.clone()))
-                .collect();
-            entries.sort_by(|a, b| a.1.cmp(&b.1));
-            let unpinned_count = entries.len();
-            let to_remove = unpinned_count.saturating_sub(limit);
-            for (id, _) in entries.into_iter().take(to_remove) {
-                jobs.remove(&id);
-            }
+        let owners: HashSet<String> = jobs.values().map(|job| job.owner_id.clone()).collect();
+        for owner_id in owners {
+            Self::prune_terminal_jobs(&mut jobs, &owner_id, limit);
         }
     }
 
@@ -895,6 +954,123 @@ mod tests {
         assert!(storage.get("job-old-unpinned").is_none());
         assert!(storage.get("job-mid-unpinned").is_some());
         assert!(storage.get("job-new-unpinned").is_some());
+    }
+
+    #[test]
+    fn active_jobs_survive_retention_and_history_clear() {
+        let storage = MemoryStorage::new();
+        storage.set_max_jobs(1);
+
+        storage.insert(make_job(
+            "job-old-terminal",
+            "2026-01-01T00:00:00Z",
+            "mage=Old\n",
+            None,
+            false,
+            None,
+        ));
+        let mut pending = pending_job("job-pending", "local-guest");
+        pending.created_at = "2026-01-02T00:00:00Z".to_string();
+        storage.insert(pending);
+        let mut running = pending_job("job-running", "local-guest");
+        running.status = JobStatus::Running;
+        running.created_at = "2026-01-03T00:00:00Z".to_string();
+        storage.insert(running);
+        let mut paused = pending_job("job-paused", "local-guest");
+        paused.status = JobStatus::Paused;
+        paused.created_at = "2026-01-04T00:00:00Z".to_string();
+        storage.insert(paused);
+        let mut pinned = make_job(
+            "job-pinned-terminal",
+            "2026-01-01T00:00:00Z",
+            "mage=Pinned\n",
+            None,
+            true,
+            None,
+        );
+        pinned.owner_id = "local-guest".to_string();
+        storage.insert(pinned);
+        storage.insert(make_job(
+            "job-new-terminal",
+            "2026-01-05T00:00:00Z",
+            "mage=New\n",
+            None,
+            false,
+            None,
+        ));
+
+        assert!(storage.get("job-old-terminal").is_none());
+        assert_eq!(
+            storage.get("job-pending").expect("pending job").status,
+            JobStatus::Pending
+        );
+        assert_eq!(
+            storage.get("job-running").expect("running job").status,
+            JobStatus::Running
+        );
+        assert_eq!(
+            storage.get("job-paused").expect("paused job").status,
+            JobStatus::Paused
+        );
+        assert!(storage.get("job-pinned-terminal").is_some());
+
+        storage.clear_history();
+
+        assert!(storage.get("job-pending").is_some());
+        assert!(storage.get("job-running").is_some());
+        assert!(storage.get("job-paused").is_some());
+        assert!(storage.get("job-new-terminal").is_none());
+    }
+
+    #[test]
+    fn max_jobs_retention_is_scoped_per_owner_and_preserves_active_jobs() {
+        let storage = MemoryStorage::new();
+        storage.set_max_jobs(10);
+
+        for (owner_id, prefix) in [("alice", "alice"), ("bob", "bob")] {
+            for (created_at, suffix) in [
+                ("2026-01-01T00:00:00Z", "old"),
+                ("2026-01-02T00:00:00Z", "middle"),
+                ("2026-01-03T00:00:00Z", "new"),
+            ] {
+                let mut job = make_job(
+                    &format!("{prefix}-{suffix}"),
+                    created_at,
+                    "mage=History\n",
+                    None,
+                    false,
+                    None,
+                );
+                job.owner_id = owner_id.to_string();
+                storage.insert(job);
+            }
+
+            let mut active = pending_job(&format!("{prefix}-active"), owner_id);
+            active.status = JobStatus::Running;
+            active.created_at = "2025-12-01T00:00:00Z".to_string();
+            storage.insert(active);
+
+            let mut pinned = make_job(
+                &format!("{prefix}-pinned"),
+                "2025-12-01T00:00:00Z",
+                "mage=Pinned\n",
+                None,
+                true,
+                None,
+            );
+            pinned.owner_id = owner_id.to_string();
+            storage.insert(pinned);
+        }
+
+        storage.set_max_jobs(2);
+
+        for prefix in ["alice", "bob"] {
+            assert!(storage.get(&format!("{prefix}-old")).is_none());
+            assert!(storage.get(&format!("{prefix}-middle")).is_some());
+            assert!(storage.get(&format!("{prefix}-new")).is_some());
+            assert!(storage.get(&format!("{prefix}-active")).is_some());
+            assert!(storage.get(&format!("{prefix}-pinned")).is_some());
+        }
     }
 
     #[test]

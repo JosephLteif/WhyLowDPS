@@ -62,35 +62,56 @@ export default function OnboardingChecklist() {
     void refresh();
   }, [refresh]);
 
-  const completed = Object.values(state).filter(Boolean).length;
-  if (loading || completed === 4) return null;
+  const items = lightMode
+    ? [
+        {
+          done: state.dataReady,
+          label: 'Game data is ready',
+          href: '/quick-sim',
+          icon: Database,
+        },
+        {
+          done: state.profileReady,
+          label: 'Import a SimC profile',
+          href: '/quick-sim',
+          icon: UserRound,
+        },
+        {
+          done: state.simulationReady,
+          label: 'Run your first simulation',
+          href: '/quick-sim',
+          icon: Play,
+        },
+      ]
+    : [
+        {
+          done: state.dataReady,
+          label: 'Game data is ready',
+          href: '/settings?tab=data',
+          icon: Database,
+        },
+        {
+          done: state.credentialsReady,
+          label: 'Connect Blizzard for character data',
+          href: '/settings?tab=integrations',
+          icon: KeyRound,
+        },
+        {
+          done: state.profileReady,
+          label: 'Import a SimC character profile',
+          href: '/quick-sim',
+          icon: UserRound,
+        },
+        {
+          done: state.simulationReady,
+          label: 'Run your first simulation',
+          href: '/quick-sim',
+          icon: Play,
+        },
+      ];
 
-  const items = [
-    {
-      done: state.dataReady,
-      label: 'Game data is ready',
-      href: '/settings?tab=data',
-      icon: Database,
-    },
-    {
-      done: state.credentialsReady,
-      label: 'Connect Blizzard for character data',
-      href: '/settings?tab=integrations',
-      icon: KeyRound,
-    },
-    {
-      done: state.profileReady,
-      label: 'Import a SimC character profile',
-      href: '/quick-sim',
-      icon: UserRound,
-    },
-    {
-      done: state.simulationReady,
-      label: 'Run your first simulation',
-      href: '/quick-sim',
-      icon: Play,
-    },
-  ];
+  const completed = items.filter((item) => item.done).length;
+  if (loading || completed === items.length) return null;
 
   return (
     <section className="card border-gold/20 bg-gold/[0.03] p-4">
@@ -98,7 +119,9 @@ export default function OnboardingChecklist() {
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-gold">Getting started</p>
           <h2 className="mt-1 text-lg font-semibold text-zinc-100">Finish setting up WhyLowDPS</h2>
-          <p className="mt-1 text-sm text-zinc-400">{completed} of 4 steps complete.</p>
+          <p className="mt-1 text-sm text-zinc-400">
+            {completed} of {items.length} steps complete.
+          </p>
         </div>
         <button
           type="button"

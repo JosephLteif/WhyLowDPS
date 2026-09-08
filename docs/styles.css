@@ -48,7 +48,7 @@ img { display: block; max-width: 100%; }
 
 a { color: inherit; text-decoration: none; }
 
-a:focus-visible, summary:focus-visible, button:focus-visible {
+a:focus-visible, summary:focus-visible, button:focus-visible, select:focus-visible {
   outline: 3px solid var(--accent-bright);
   outline-offset: 4px;
 }
@@ -269,10 +269,18 @@ code { padding: 2px 5px; border: 1px solid var(--line); border-radius: 5px; back
 .history-hero { max-width: 760px; margin-bottom: 52px; }
 .history-hero h1 { margin-bottom: 18px; }
 .history-hero > p:last-child { max-width: 650px; color: var(--text-soft); font-size: 1.06rem; line-height: 1.65; }
+.history-filter { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 36px; padding: 18px 20px; border: 1px solid rgba(212, 168, 67, .28); border-radius: var(--radius-md); background: linear-gradient(135deg, rgba(212, 168, 67, .1), transparent 70%), var(--surface-subtle); }
+.history-filter-control { display: flex; align-items: center; gap: 14px; }
+.history-filter label { color: var(--text); font-size: .82rem; font-weight: 700; }
+.history-filter select { min-width: 190px; padding: 11px 36px 11px 13px; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--surface); color: var(--text); font: inherit; font-size: .86rem; font-weight: 650; }
+.history-filter-status { margin: 0; color: var(--text-muted); font-size: .82rem; text-align: right; }
 .history-content { color: var(--text-soft); font-size: .94rem; line-height: 1.7; }
+.history-content [hidden] { display: none; }
 .history-content > p { max-width: 760px; }
 .history-content h2 { margin: 64px 0 22px; padding: 18px 20px; border: 1px solid rgba(212, 168, 67, .32); border-radius: var(--radius-md); background: linear-gradient(135deg, rgba(212, 168, 67, .11), transparent 70%), var(--surface-subtle); color: var(--text); font-size: clamp(1.45rem, 3vw, 2rem); }
 .history-content h2:first-child { margin-top: 0; }
+.history-content h2 .history-release-link { color: inherit; text-decoration: none; }
+.history-content h2 .history-release-link:hover { color: var(--accent-bright); }
 .history-content h3 { margin: 31px 0 10px; color: var(--accent-bright); font-size: .75rem; letter-spacing: .14em; text-transform: uppercase; }
 .history-content h4 { margin: 21px 0 5px; color: var(--text); font-size: 1.05rem; }
 .history-content ul { display: grid; gap: 7px; margin: 10px 0 19px; padding-left: 22px; }
@@ -342,6 +350,10 @@ code { padding: 2px 5px; border: 1px solid var(--line); border-radius: 5px; back
   .modal-footer .button { width: 100%; }
   .faq-item summary, .faq-item p { padding-left: 18px; padding-right: 18px; }
   .cta-panel { padding-inline: 21px; }
+  .history-filter { align-items: stretch; flex-direction: column; gap: 13px; }
+  .history-filter-control { align-items: stretch; flex-direction: column; gap: 8px; }
+  .history-filter select { width: 100%; }
+  .history-filter-status { text-align: left; }
   .footer-layout { flex-direction: column; }
   .footer-links { justify-content: flex-start; }
 }

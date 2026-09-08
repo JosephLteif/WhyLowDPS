@@ -32,6 +32,11 @@ struct AdmissionState {
     limit: usize,
     active: usize,
     waiting: HashMap<String, AdmissionWaiter>,
+    /// Latest persisted queue order for jobs whose admission attempt timed
+    /// out. The runner may retry with its original argument after a timeout,
+    /// so keeping this alongside the waiter prevents a stale order from
+    /// undoing a reorder made while the job was waiting.
+    queue_orders: HashMap<String, u64>,
     next_sequence: u64,
 }
 
@@ -52,6 +57,7 @@ impl SimulationAdmission {
                 limit: limit.max(1),
                 active: 0,
                 waiting: HashMap::new(),
+                queue_orders: HashMap::new(),
                 next_sequence: 0,
             }),
             notify: tokio::sync::Notify::new(),
@@ -79,16 +85,21 @@ impl SimulationAdmission {
 
             let granted = {
                 let mut state = self.state.lock().unwrap();
+                let current_order = state
+                    .queue_orders
+                    .entry(job_id.to_string())
+                    .or_insert(queue_order)
+                    .to_owned();
                 let sequence = state.next_sequence;
-                state.next_sequence = state.next_sequence.saturating_add(1);
                 state
                     .waiting
                     .entry(job_id.to_string())
-                    .and_modify(|waiter| waiter.queue_order = queue_order)
+                    .and_modify(|waiter| waiter.queue_order = current_order)
                     .or_insert(AdmissionWaiter {
-                        queue_order,
+                        queue_order: current_order,
                         sequence,
                     });
+                state.next_sequence = state.next_sequence.saturating_add(1);
 
                 let next_job = state
                     .waiting
@@ -97,6 +108,7 @@ impl SimulationAdmission {
                     .map(|(id, _)| id.as_str());
                 if state.active < state.limit && next_job == Some(job_id) {
                     state.waiting.remove(job_id);
+                    state.queue_orders.remove(job_id);
                     state.active += 1;
                     true
                 } else {
@@ -130,23 +142,25 @@ impl SimulationAdmission {
     }
 
     fn remove_waiter(&self, job_id: &str) {
-        let removed = self.state.lock().unwrap().waiting.remove(job_id).is_some();
+        let mut state = self.state.lock().unwrap();
+        let removed = state.waiting.remove(job_id).is_some();
+        state.queue_orders.remove(job_id);
+        drop(state);
         if removed {
             self.notify.notify_waiters();
         }
     }
 
     fn update_waiter_order(&self, job_id: &str, queue_order: u64) {
-        let updated = self
-            .state
-            .lock()
-            .unwrap()
-            .waiting
-            .get_mut(job_id)
-            .map(|waiter| {
-                waiter.queue_order = queue_order;
-            })
-            .is_some();
+        let mut state = self.state.lock().unwrap();
+        let updated = if let Some(waiter) = state.waiting.get_mut(job_id) {
+            waiter.queue_order = queue_order;
+            state.queue_orders.insert(job_id.to_string(), queue_order);
+            true
+        } else {
+            false
+        };
+        drop(state);
         if updated {
             self.notify.notify_waiters();
         }
@@ -866,7 +880,10 @@ pub async fn acquire_simulation_slot(
 ) -> std::result::Result<SimulationAdmissionGuard, String> {
     let control = get_or_register_job_control(job_id);
     loop {
-        control.wait_until_runnable().await?;
+        if let Err(error) = control.wait_until_runnable().await {
+            SIMC_ADMISSION.remove_waiter(job_id);
+            return Err(error);
+        }
 
         let guard = tokio::time::timeout(
             Duration::from_millis(250),
@@ -877,7 +894,13 @@ pub async fn acquire_simulation_slot(
             Ok(Ok(guard)) => guard,
             Ok(Err(error)) => return Err(error),
             Err(_) => {
-                SIMC_ADMISSION.remove_waiter(job_id);
+                // Keep the waiter registered across the short retry window.
+                // A queue reorder can arrive after this timeout; removing the
+                // waiter here would also discard the only place where that
+                // newer order is retained.
+                if control.is_paused() || control.is_cancelled() {
+                    SIMC_ADMISSION.remove_waiter(job_id);
+                }
                 continue;
             }
         };
@@ -1808,6 +1831,57 @@ mod tests {
         release_tx.send(()).expect("release signal receiver");
         high.await.expect("high-order job should finish");
         low.await.expect("low-order job should finish");
+    }
+
+    #[tokio::test]
+    async fn admission_retry_keeps_reordered_order_after_timeout() {
+        let admission = Arc::new(SimulationAdmission::new(1));
+        let first = admission.acquire_job("retry-first", 1).await;
+
+        assert!(tokio::time::timeout(
+            Duration::from_millis(5),
+            admission.acquire_job("retry-low", 100),
+        )
+        .await
+        .is_err());
+
+        let (high_started_tx, high_started_rx) = tokio::sync::oneshot::channel();
+        let high_admission = admission.clone();
+        let high = tokio::spawn(async move {
+            let _guard = high_admission.acquire_job("retry-high", 50).await;
+            let _ = high_started_tx.send(());
+        });
+
+        // This is the update that the queue API sends while the runner is
+        // between its timed admission attempts.
+        admission.update_waiter_order("retry-low", 1);
+
+        let (low_started_tx, low_started_rx) = tokio::sync::oneshot::channel();
+        let (low_release_tx, low_release_rx) = tokio::sync::oneshot::channel();
+        let low_admission = admission.clone();
+        let low = tokio::spawn(async move {
+            let _guard = low_admission.acquire_job("retry-low", 100).await;
+            low_started_tx.send(()).expect("low-order receiver");
+            low_release_rx.await.expect("low-order release signal");
+        });
+
+        for _ in 0..5 {
+            tokio::task::yield_now().await;
+        }
+        drop(first);
+        tokio::time::timeout(Duration::from_secs(1), low_started_rx)
+            .await
+            .expect("reordered waiter should acquire first")
+            .expect("low-order job should start");
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), high_started_rx)
+                .await
+                .is_err()
+        );
+
+        low_release_tx.send(()).expect("low-order release receiver");
+        low.await.expect("low-order job should finish");
+        high.await.expect("high-order job should finish");
     }
 
     #[tokio::test]

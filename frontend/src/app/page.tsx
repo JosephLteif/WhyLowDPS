@@ -553,7 +553,7 @@ export default function Home() {
   const loadAll = useCallback(async () => {
     try {
       const [simData, statData, systemStats, queueData] = await Promise.all([
-        listSims(),
+        listSims({ limit: 100 }),
         getHistoryStats(),
         isDesktop ? getSystemStats().catch(() => null) : Promise.resolve(null),
         getQueue('mine').catch(() => null),

@@ -21,16 +21,6 @@ export const CHANGELOG_STATUS_EVENT = 'whylowdps:changelog-status';
 export { CHANGELOG_CONTENT_REVISION } from '../lib/changelog';
 
 export const CHANGELOG_SEEN_KEY = `whylowdps_changelog_seen_${APP_VERSION}_${CHANGELOG_CONTENT_REVISION}`;
-export const CHANGELOG_LAST_SEEN_VERSION_KEY = 'whylowdps_changelog_last_seen_version';
-
-function readLastSeenVersion(): string | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    return window.localStorage.getItem(CHANGELOG_LAST_SEEN_VERSION_KEY)?.trim() || null;
-  } catch {
-    return null;
-  }
-}
 
 export function isChangelogUnread(): boolean {
   if (typeof window === 'undefined') return false;
@@ -47,10 +37,9 @@ function notifyChangelogStatus(): void {
 
 export default function ChangelogPopup() {
   const [isOpen, setIsOpen] = useState(false);
-  const [lastSeenVersion, setLastSeenVersion] = useState<string | null>(null);
   const [selectedVersion, setSelectedVersion] = useState<string | null>(null);
   const [visibleReleases, setVisibleReleases] = useState<ChangelogRelease[]>(() =>
-    getChangelogReleasesToShow(CHANGELOG_RELEASES, APP_VERSION, null)
+    getChangelogReleasesToShow(CHANGELOG_RELEASES, APP_VERSION)
   );
   const versionFilters = Array.from(new Set(visibleReleases.map((release) => release.version)));
   const activeVersionFilter =
@@ -62,9 +51,7 @@ export default function ChangelogPopup() {
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    const previous = readLastSeenVersion();
-    setLastSeenVersion(previous);
-    setVisibleReleases(getChangelogReleasesToShow(CHANGELOG_RELEASES, APP_VERSION, previous));
+    setVisibleReleases(getChangelogReleasesToShow(CHANGELOG_RELEASES, APP_VERSION));
     if (isChangelogUnread()) setIsOpen(true);
     notifyChangelogStatus();
 
@@ -78,9 +65,7 @@ export default function ChangelogPopup() {
   const dismiss = useCallback(() => {
     try {
       window.localStorage.setItem(CHANGELOG_SEEN_KEY, '1');
-      window.localStorage.setItem(CHANGELOG_LAST_SEEN_VERSION_KEY, APP_VERSION);
     } catch {}
-    setLastSeenVersion(APP_VERSION);
     setIsOpen(false);
     notifyChangelogStatus();
   }, []);
@@ -161,9 +146,7 @@ export default function ChangelogPopup() {
                   {LATEST_CHANGELOG_RELEASE.version}
                 </p>
                 <p className="mt-2 text-sm text-zinc-400">
-                  {lastSeenVersion
-                    ? `Updates since ${lastSeenVersion}.`
-                    : 'Latest updates and major-release highlights.'}
+                  All updates from the current major release.
                 </p>
               </div>
             </div>

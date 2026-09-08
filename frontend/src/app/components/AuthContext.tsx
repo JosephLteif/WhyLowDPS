@@ -57,6 +57,34 @@ const AuthContext = createContext<AuthContextType>({
 let authCheckInFlight: Promise<AuthUser | null> | null = null;
 const LIGHT_MODE_KEY = 'whylowdps_light_mode';
 const FULL_MODE_KEY = 'whylowdps_full_mode';
+const DESKTOP_SESSION_TIMEOUT_MS = 250;
+
+function isTransientAuthError(error: unknown): boolean {
+  if (isNetworkUnavailableError(error)) return true;
+  const status = Number((error as { status?: unknown } | null)?.status);
+  return status === 408 || status === 429 || (status >= 500 && status <= 599);
+}
+
+type DesktopSessionRestore = {
+  token: string | null;
+  pending: Promise<string | null> | null;
+};
+
+async function loadDesktopSessionToken(): Promise<DesktopSessionRestore> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const tokenRequest = invoke<string | null>('load_session_token');
+  try {
+    const result = await Promise.race<string | null | undefined>([
+      tokenRequest,
+      new Promise<undefined>((resolve) => {
+        timeoutId = setTimeout(() => resolve(undefined), DESKTOP_SESSION_TIMEOUT_MS);
+      }),
+    ]);
+    return { token: result ?? null, pending: result === undefined ? tokenRequest : null };
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
 
 async function persistDesktopLightModePreference(lightMode: boolean): Promise<void> {
   if (!isDesktop) return;
@@ -192,11 +220,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const checkAuth = async () => {
       if (isDesktop) {
         try {
-          const storedToken = await Promise.race([
-            invoke<string | null>('load_session_token'),
-            new Promise<null>((resolve) => setTimeout(() => resolve(null), 250)),
-          ]);
-          if (storedToken) setSessionToken(storedToken);
+          const restore = await loadDesktopSessionToken();
+          if (restore.token) setSessionToken(restore.token);
+          if (restore.pending) {
+            void restore.pending
+              .then(async (lateToken) => {
+                if (!lateToken) return;
+                setSessionToken(lateToken);
+                try {
+                  const lateUser = await fetchCurrentUserOnce();
+                  if (lateUser) await switchBrowserUserScope(lateUser.id);
+                  setUser(lateUser?.guest ? null : lateUser);
+                } catch (lateError) {
+                  if (!isTransientAuthError(lateError)) {
+                    console.error('Failed to complete delayed desktop session restore:', lateError);
+                  }
+                }
+              })
+              .catch((lateError) => {
+                console.error('Failed to restore desktop session:', lateError);
+              });
+          }
         } catch (err) {
           console.error('Failed to restore desktop session:', err);
         }
@@ -228,10 +272,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         localStorage.removeItem(LAN_ACCESS_REQUIRED_STORAGE_KEY);
         setLanAccessRequired(false);
       } catch (err: any) {
-        if (err.status !== 401 && !isNetworkUnavailableError(err)) {
+        if (!isTransientAuthError(err) && err.status !== 401) {
           console.error('Auth check failed:', err);
         }
-        // If 401/error, consider user logged out
+        if (isTransientAuthError(err)) {
+          // A temporary backend outage must not turn an otherwise valid session
+          // into a logout. The next auth-triggering refresh can retry it.
+          return;
+        }
+        // A real 401 means the session is no longer valid.
         setSessionToken(null);
         setUser(null);
         const pairingRequired =

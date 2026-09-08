@@ -50,55 +50,19 @@ export function isMajorChangelogRelease(version: string): boolean {
 
 export function getChangelogReleasesToShow(
   releases: ChangelogRelease[],
-  currentVersion: string,
-  lastSeenVersion: string | null
+  currentVersion: string
 ): ChangelogRelease[] {
   const stableReleases = releases.filter((release) => parseChangelogVersion(release.version));
   const current = parseChangelogVersion(currentVersion);
   const availableReleases = current
     ? stableReleases.filter((release) => {
         const parsed = parseChangelogVersion(release.version);
-        return parsed ? compareChangelogVersions(parsed, current) <= 0 : false;
+        return parsed && parsed.major === current.major
+          ? compareChangelogVersions(parsed, current) <= 0
+          : false;
       })
     : stableReleases;
-  const currentRelease =
-    (current
-      ? availableReleases.find((release) => {
-          const parsed = parseChangelogVersion(release.version);
-          return parsed ? compareChangelogVersions(parsed, current) === 0 : false;
-        })
-      : null) ??
-    availableReleases[0] ??
-    null;
-  const lastSeen = parseChangelogVersion(lastSeenVersion);
-
-  let stableToShow: ChangelogRelease[];
-  if (lastSeen) {
-    stableToShow = availableReleases.filter((release) => {
-      const parsed = parseChangelogVersion(release.version);
-      return parsed ? compareChangelogVersions(parsed, lastSeen) > 0 : false;
-    });
-  } else if (current) {
-    const majorRelease = availableReleases
-      .filter((release) => parseChangelogVersion(release.version)?.major === current.major)
-      .reduce<ChangelogRelease | null>((oldest, release) => {
-        if (!oldest) return release;
-        const releaseVersion = parseChangelogVersion(release.version);
-        const oldestVersion = parseChangelogVersion(oldest.version);
-        return releaseVersion &&
-          oldestVersion &&
-          compareChangelogVersions(releaseVersion, oldestVersion) < 0
-          ? release
-          : oldest;
-      }, null);
-    stableToShow = [currentRelease, majorRelease].filter((release): release is ChangelogRelease =>
-      Boolean(release)
-    );
-  } else {
-    stableToShow = availableReleases.slice(0, 1);
-  }
-
-  if (stableToShow.length === 0 && currentRelease) stableToShow = [currentRelease];
+  const stableToShow = current ? availableReleases : availableReleases.slice(0, 1);
 
   const unreleased = releases.filter(
     (release) => release.version.trim().toLowerCase() === 'unreleased' && release.entries.length > 0

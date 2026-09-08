@@ -1,12 +1,64 @@
 # What's New History
 
-This is the append-only archive for the public GitHub Pages changelog. The app popup shows updates since the user's last seen version, including major-release highlights when a user skips directly to a later patch; older versions remain available on the Pages archive and at their repository release tags.
+This is the append-only archive for the public GitHub Pages changelog. The app popup shows all released updates from the app's current major version, plus unreleased notes when available; it resets to the next major version when the app moves forward. Older versions remain available on the Pages archive and at their repository release tags.
 
 Add new work under the `Unreleased` section. Stable bump and `promote-dev` releases promote that section to the selected version and date, synchronize the app data, and update `master` for GitHub Pages. `republish` only rebuilds an existing release tag.
 
 ## Unreleased
 
-No unreleased changes yet.
+### Improvements
+
+#### Keep What’s New focused on the current major release
+
+The app's What's New feed now keeps every released minor and patch update from the installed major version visible, then resets to the new major version when the app moves forward.
+
+- Review the complete 6.x release series while running a 6.x build without losing earlier minor or patch notes after dismissing the popup.
+- Keep unreleased notes separate from the released major-version history while preserving the existing unread indicator.
+
+#### Make the public release notes easier to browse
+
+The GitHub Pages release-notes archive now presents a clean end-user view without maintainer release workflow details.
+
+- Choose a specific stable version to show only that release's notes, with a shareable version URL.
+- Open the linked GitHub release tag directly from each version heading.
+
+#### Keep simulation status updates usable during outages
+
+Result pages now keep the last successful simulation state visible while status requests retry with capped backoff and expose a Retry now action. Scenario toolbars use a compact owner-scoped status request and continue tracking active siblings until they finish.
+
+#### Recover partial scenario submissions
+
+Multi-scenario submissions now keep successful jobs and failed definitions separate. A warning identifies failures and links back to the original setup so the remaining scenarios can be retried.
+
+#### Reduce dashboard and history refresh work
+
+Dashboard refreshes request a bounded recent history page, while history statistics use an aggregate storage query instead of loading result archives.
+
+#### Preserve queue order across runner retries
+
+Queue reorders now remain effective when admission waits cross a retry timeout, so the next job follows the order shown in Queue.
+
+### Bug fixes
+
+#### Protect active simulations from retention cleanup
+
+History retention and clear operations now remove only unpinned terminal jobs, apply limits per owner, and leave pending, running, and paused simulations available.
+
+#### Keep operational state network fresh
+
+The service worker no longer serves cached operational status or game-data state while offline; immutable assets remain cacheable.
+
+#### Preserve desktop sessions through transient auth outages
+
+Desktop session restore now tolerates a short backend delay and transient authentication failures without clearing a valid session token.
+
+#### Make onboarding and confirmation flows mode- and keyboard-aware
+
+Light mode shows only applicable setup steps, and confirmation dialogs now manage focus, support Escape, and stay open when an asynchronous confirmation fails.
+
+#### Reconcile partial history mutations
+
+Bulk delete and pin actions now refresh authoritative state after mixed results and report failed items without losing successful updates.
 
 ## v6.0.1 — 2026-09-06 — Release notes for v6.0.1
 

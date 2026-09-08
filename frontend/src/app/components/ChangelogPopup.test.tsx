@@ -1,11 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
-import ChangelogPopup, {
-  CHANGELOG_CONTENT_REVISION,
-  CHANGELOG_LAST_SEEN_VERSION_KEY,
-  CHANGELOG_OPEN_EVENT,
-} from './ChangelogPopup';
+import ChangelogPopup, { CHANGELOG_CONTENT_REVISION, CHANGELOG_OPEN_EVENT } from './ChangelogPopup';
 import { APP_VERSION } from '../lib/version';
 import { CHANGELOG_HISTORY_URL, LATEST_CHANGELOG_RELEASE } from '../lib/changelog';
 
@@ -36,7 +32,6 @@ describe('ChangelogPopup', () => {
 
     await user.click(screen.getByRole('button', { name: /got it/i }));
     expect(localStorage.getItem(seenKey)).toBe('1');
-    expect(localStorage.getItem(CHANGELOG_LAST_SEEN_VERSION_KEY)).toBe(APP_VERSION);
     await waitFor(() => {
       expect(screen.queryByRole('dialog', { name: /what's new/i })).not.toBeInTheDocument();
     });

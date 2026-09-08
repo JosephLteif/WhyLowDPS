@@ -55,7 +55,14 @@ function filterPublicReleaseSection(section) {
       let entry = null;
 
       const finishEntry = () => {
-        if (entry && !INTERNAL_RELEASE_NOTE_TITLES.has(entry.title)) entries.push(entry);
+        const content = entry ? [entry.title, ...entry.lines].join('\n') : '';
+        if (
+          entry &&
+          !INTERNAL_RELEASE_NOTE_TITLES.has(entry.title) &&
+          !/\bunreleased\b|promote-dev|republish/i.test(content)
+        ) {
+          entries.push(entry);
+        }
         entry = null;
       };
 

@@ -176,9 +176,15 @@ pub(super) async fn list_sims(
         Some(query.realm.as_str())
     };
 
+    // Keep the historical no-query behavior for callers that need the full
+    // retained archive, while allowing dashboards to request a bounded page.
+    let limit = query
+        .limit
+        .map(|limit| limit.clamp(1, 1_000))
+        .unwrap_or_else(|| max_jobs.max(10_000));
     let summaries = store.list_recent_owned(
         &owner_id,
-        std::cmp::max(max_jobs, 10000),
+        limit,
         player,
         realm,
         query.linked_only,
@@ -186,6 +192,58 @@ pub(super) async fn list_sims(
         query.pinned_only,
     );
     HttpResponse::Ok().json(summaries)
+}
+
+const MAX_SIM_STATUS_IDS: usize = 40;
+
+#[derive(Debug, Deserialize, Default)]
+pub(super) struct SimStatusQuery {
+    #[serde(default)]
+    pub ids: String,
+}
+
+pub(super) async fn list_sim_statuses(
+    req: HttpRequest,
+    auth: web::Data<Arc<crate::server::auth_handlers::BlizzardAuthState>>,
+    query: web::Query<SimStatusQuery>,
+    store: web::Data<Arc<dyn JobStorage>>,
+) -> HttpResponse {
+    let mut seen_ids = std::collections::HashSet::new();
+    let ids: Vec<String> = query
+        .ids
+        .split(',')
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .filter_map(|id| {
+            let id = id.to_owned();
+            seen_ids.insert(id.clone()).then_some(id)
+        })
+        .collect();
+    if ids.len() > MAX_SIM_STATUS_IDS {
+        return HttpResponse::BadRequest().json(json!({
+            "detail": format!("A maximum of {MAX_SIM_STATUS_IDS} simulation IDs may be requested.")
+        }));
+    }
+
+    let owner_id = owner_id(&req, &auth);
+    let statuses = store.list_status_owned(&owner_id, &ids);
+    HttpResponse::Ok().json(
+        statuses
+            .into_iter()
+            .map(|summary| {
+                json!({
+                    "id": summary.id,
+                    "status": queue_item_status(&summary.status),
+                    "progress": summary.progress,
+                    "queue_position": summary.queue_position,
+                    "created_at": summary.created_at,
+                    "sim_type": summary.sim_type,
+                    "player_name": summary.player_name,
+                    "linked_name": summary.linked_name,
+                })
+            })
+            .collect::<Vec<_>>(),
+    )
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -891,11 +949,10 @@ pub(super) async fn get_history_stats(
     store: web::Data<Arc<dyn JobStorage>>,
 ) -> HttpResponse {
     let owner_id = owner_id(&req, &auth);
-    let size = store.get_storage_size_owned(&owner_id);
-    let sims = store.list_recent_owned(&owner_id, 1000, None, None, false, false, false);
+    let (count, size) = store.get_history_stats_owned(&owner_id);
     HttpResponse::Ok().json(json!({
         "size_bytes": size,
-        "count": sims.len(),
+        "count": count,
     }))
 }
 
@@ -1023,6 +1080,12 @@ mod tests {
         store: web::Data<Arc<dyn JobStorage>>,
     ) -> HttpResponse {
         super::list_sims(test_request(), test_auth(), query, store).await
+    }
+    async fn list_sim_statuses(
+        query: web::Query<SimStatusQuery>,
+        store: web::Data<Arc<dyn JobStorage>>,
+    ) -> HttpResponse {
+        super::list_sim_statuses(test_request(), test_auth(), query, store).await
     }
     async fn list_related_sims(
         path: web::Path<String>,
@@ -1516,6 +1579,7 @@ mod tests {
                 linked_only: false,
                 unlinked_only: false,
                 pinned_only: false,
+                limit: None,
             }),
             store.clone(),
         )
@@ -1530,6 +1594,7 @@ mod tests {
                 linked_only: true,
                 unlinked_only: false,
                 pinned_only: false,
+                limit: None,
             }),
             store.clone(),
         )
@@ -1550,6 +1615,7 @@ mod tests {
                 linked_only: false,
                 unlinked_only: false,
                 pinned_only: true,
+                limit: None,
             }),
             store.clone(),
         )
@@ -1570,6 +1636,7 @@ mod tests {
                 linked_only: false,
                 unlinked_only: true,
                 pinned_only: false,
+                limit: None,
             }),
             store.clone(),
         )
@@ -1590,6 +1657,7 @@ mod tests {
                 linked_only: true,
                 unlinked_only: false,
                 pinned_only: false,
+                limit: None,
             }),
             store.clone(),
         )
@@ -1602,6 +1670,90 @@ mod tests {
             .filter_map(|v| v.get("id").and_then(Value::as_str))
             .collect();
         assert_eq!(linked_without_identity_ids, vec!["linked", "unlinked"]);
+    }
+
+    #[actix_web::test]
+    async fn compact_status_listing_is_owner_scoped_and_includes_queue_positions() {
+        let store = test_store();
+        let mut first = make_job("status-first", JobStatus::Pending, "2026-01-01T00:00:00Z");
+        first.queue_order = 10;
+        store.insert(first);
+        let mut second = make_job("status-second", JobStatus::Pending, "2026-01-02T00:00:00Z");
+        second.queue_order = 20;
+        second.linked_name = Some("Linked Alice".to_string());
+        store.insert(second);
+        store.insert(make_job(
+            "status-done",
+            JobStatus::Done,
+            "2026-01-03T00:00:00Z",
+        ));
+        let mut other_owner = make_job(
+            "status-other-owner",
+            JobStatus::Running,
+            "2026-01-04T00:00:00Z",
+        );
+        other_owner.owner_id = "another-user".to_string();
+        store.insert(other_owner);
+
+        let response = list_sim_statuses(
+            web::Query(SimStatusQuery {
+                ids: "status-second,status-done,status-other-owner".to_string(),
+            }),
+            store.clone(),
+        )
+        .await;
+        assert_eq!(response.status(), 200);
+        let payload = json_body(response).await;
+        let statuses = payload.as_array().expect("compact status array");
+        assert_eq!(statuses.len(), 2);
+        assert_eq!(statuses[0]["id"], "status-second");
+        assert_eq!(statuses[0]["status"], "pending");
+        assert_eq!(statuses[0]["progress"], 0);
+        assert_eq!(statuses[0]["queue_position"], 2);
+        assert_eq!(statuses[0]["player_name"], "Linked Alice");
+        assert_eq!(statuses[0]["linked_name"], "Linked Alice");
+        assert_eq!(statuses[1]["id"], "status-done");
+        assert_eq!(statuses[1]["progress"], 100);
+        assert!(statuses[1]["queue_position"].is_null());
+
+        let too_many_ids = (0..41)
+            .map(|index| format!("status-{index}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        let response =
+            list_sim_statuses(web::Query(SimStatusQuery { ids: too_many_ids }), store).await;
+        assert_eq!(response.status(), 400);
+    }
+
+    #[actix_web::test]
+    async fn list_sims_applies_an_explicit_bounded_limit() {
+        let store = test_store();
+        store.insert(make_job(
+            "limited-old",
+            JobStatus::Done,
+            "2026-01-01T00:00:00Z",
+        ));
+        store.insert(make_job(
+            "limited-new",
+            JobStatus::Done,
+            "2026-01-02T00:00:00Z",
+        ));
+
+        let response = list_sims(
+            web::Query(ListSimsQuery {
+                player: String::new(),
+                realm: String::new(),
+                linked_only: false,
+                unlinked_only: false,
+                pinned_only: false,
+                limit: Some(1),
+            }),
+            store,
+        )
+        .await;
+        let payload = json_body(response).await;
+        assert_eq!(payload.as_array().map(Vec::len), Some(1));
+        assert_eq!(payload[0]["id"], "limited-new");
     }
 
     #[actix_web::test]

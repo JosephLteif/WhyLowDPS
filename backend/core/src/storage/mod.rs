@@ -9,6 +9,18 @@ pub use sqlite::SqliteStorage;
 use crate::models::{AppUser, Job, JobStatus, JobSummary, SavedCharacterProfile, SavedRoute};
 use once_cell::sync::Lazy;
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct SimStatusSummary {
+    pub id: String,
+    pub status: JobStatus,
+    pub progress: u8,
+    pub queue_position: Option<usize>,
+    pub created_at: String,
+    pub sim_type: String,
+    pub player_name: Option<String>,
+    pub linked_name: Option<String>,
+}
+
 fn parse_env_usize(key: &str) -> Option<usize> {
     std::env::var(key).ok()?.parse().ok()
 }
@@ -32,7 +44,8 @@ fn default_max_parallel_jobs() -> usize {
         })
 }
 
-/// Maximum number of jobs to retain. Oldest jobs are deleted on insert.
+/// Maximum number of unpinned terminal jobs to retain per owner. Oldest
+/// terminal jobs are deleted on insert or when the limit changes.
 /// Override with MAX_JOBS env var. Defaults: desktop=50, web=200.
 pub static MAX_JOBS: Lazy<usize> = Lazy::new(|| {
     parse_env_usize("MAX_JOBS_PER_USER")
@@ -85,6 +98,17 @@ pub trait JobStorage: Send + Sync {
         unlinked_only: bool,
         pinned_only: bool,
     ) -> Vec<JobSummary>;
+    /// List compact, owner-scoped status records without loading result archives.
+    fn list_status_owned(&self, owner_id: &str, ids: &[String]) -> Vec<SimStatusSummary>;
+    /// Return the count and total stored payload size for one owner's history.
+    fn get_history_stats_owned(&self, owner_id: &str) -> (usize, u64) {
+        let summaries =
+            self.list_recent_owned(owner_id, usize::MAX, None, None, false, false, false);
+        (
+            summaries.len(),
+            summaries.iter().map(|summary| summary.size_bytes).sum(),
+        )
+    }
     /// List active queue jobs. `None` returns all owners for administrator views.
     fn list_queue(&self, owner_id: Option<&str>) -> Vec<JobSummary>;
     /// Reorder all pending jobs in the supplied scope. An owner scope only

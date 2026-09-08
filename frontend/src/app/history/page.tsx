@@ -880,9 +880,18 @@ export default function HistoryPage() {
     if (selectedIds.size === 0) return;
     if (!confirm(`Delete ${selectedIds.size} selected simulation record(s)?`)) return;
     setBulkDeleting(true);
+    const ids = Array.from(selectedIds);
     try {
-      await Promise.all(Array.from(selectedIds).map((id) => deleteSim(id)));
+      const results = await Promise.allSettled(ids.map((id) => deleteSim(id)));
       await refreshHistory();
+      const failed = results.filter((result) => result.status === 'rejected').length;
+      if (failed > 0) {
+        notify({
+          title: 'Some simulations could not be deleted',
+          description: `${failed} of ${ids.length} selected records could not be deleted.`,
+          variant: 'error',
+        });
+      }
     } catch (err) {
       notify({
         title: 'Could not delete all selected simulations',
@@ -898,24 +907,38 @@ export default function HistoryPage() {
     async (pinned: boolean) => {
       if (selectedIds.size === 0) return;
       const ids = Array.from(selectedIds);
+      const previousPinned = new Map(
+        sims.filter((sim) => selectedIds.has(sim.id)).map((sim) => [sim.id, Boolean(sim.pinned)])
+      );
       setBulkPinning(true);
       setSims((prev) => prev.map((sim) => (selectedIds.has(sim.id) ? { ...sim, pinned } : sim)));
       try {
-        await Promise.all(ids.map((id) => setSimPinned(id, pinned)));
+        const results = await Promise.allSettled(ids.map((id) => setSimPinned(id, pinned)));
+        await refreshHistory();
+        const failed = results.filter((result) => result.status === 'rejected').length;
+        if (failed > 0) {
+          notify({
+            title: 'Some pinned states could not be updated',
+            description: `${failed} of ${ids.length} selected records could not be updated.`,
+            variant: 'error',
+          });
+        }
       } catch {
+        setSims((prev) =>
+          prev.map((sim) =>
+            previousPinned.has(sim.id) ? { ...sim, pinned: previousPinned.get(sim.id) } : sim
+          )
+        );
         notify({
           title: 'Could not update pinned state',
-          description: 'The selected records were refreshed locally, but the server update failed.',
+          description: 'The selected records could not be refreshed from the server.',
           variant: 'error',
         });
-        setSims((prev) =>
-          prev.map((sim) => (selectedIds.has(sim.id) ? { ...sim, pinned: !pinned } : sim))
-        );
       } finally {
         setBulkPinning(false);
       }
     },
-    [notify, selectedIds]
+    [notify, refreshHistory, selectedIds, sims]
   );
 
   if (loading) {

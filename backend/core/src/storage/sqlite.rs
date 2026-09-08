@@ -1,8 +1,8 @@
 use rusqlite::{params, Connection};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
-use super::JobStorage;
+use super::{JobStorage, SimStatusSummary};
 use crate::models::{
     extract_result_summary, AppUser, Job, JobStatus, JobSummary, SavedCharacterProfile, SavedRoute,
 };
@@ -281,6 +281,25 @@ impl SqliteStorage {
             queue_order: row.get::<_, i64>(28).unwrap_or(0).max(0) as u64,
         })
     }
+
+    fn prune_terminal_jobs(conn: &Connection, owner_id: &str, limit: usize) {
+        conn.execute(
+            "DELETE FROM jobs
+             WHERE owner_id = ?1
+               AND pinned = 0
+               AND status IN ('done', 'failed', 'cancelled')
+               AND id NOT IN (
+                   SELECT id FROM jobs
+                   WHERE owner_id = ?1
+                     AND pinned = 0
+                     AND status IN ('done', 'failed', 'cancelled')
+                   ORDER BY created_at DESC, id DESC
+                   LIMIT ?2
+               )",
+            params![owner_id, limit as u32],
+        )
+        .ok();
+    }
 }
 
 fn query_pending_queue(
@@ -359,12 +378,8 @@ impl JobStorage for SqliteStorage {
         )
         .expect("Failed to insert job");
 
-        // Garbage collect oldest jobs beyond limit
         let limit = *self.max_jobs.lock().unwrap();
-        conn.execute(
-            "DELETE FROM jobs WHERE owner_id = ?1 AND pinned = 0 AND id NOT IN (SELECT id FROM jobs WHERE owner_id = ?1 AND pinned = 0 ORDER BY created_at DESC LIMIT ?2)",
-            params![job.owner_id, limit as u32],
-        ).ok();
+        Self::prune_terminal_jobs(&conn, &owner_id, limit);
     }
 
     fn get(&self, id: &str) -> Option<Job> {
@@ -507,6 +522,76 @@ impl JobStorage for SqliteStorage {
             })
             .take(limit)
             .collect()
+    }
+
+    fn list_status_owned(&self, owner_id: &str, ids: &[String]) -> Vec<SimStatusSummary> {
+        if ids.is_empty() {
+            return Vec::new();
+        }
+
+        let placeholders = (0..ids.len())
+            .map(|index| format!("?{}", index + 2))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let query = format!(
+            "SELECT j.id, j.status, j.progress_pct, j.created_at, j.sim_type,
+                    j.simc_input, j.linked_name,
+                    CASE WHEN j.status = 'pending' THEN (
+                        SELECT COUNT(*) + 1 FROM jobs AS q
+                        WHERE q.owner_id = j.owner_id AND q.status = 'pending'
+                          AND (q.queue_order < j.queue_order
+                               OR (q.queue_order = j.queue_order AND (
+                                   q.created_at < j.created_at
+                                   OR (q.created_at = j.created_at AND q.id < j.id))))
+                    ) ELSE NULL END AS queue_position
+             FROM jobs AS j
+             WHERE j.owner_id = ?1 AND j.id IN ({placeholders})"
+        );
+
+        let conn = self.conn.lock().unwrap();
+        let mut statement = match conn.prepare(&query) {
+            Ok(statement) => statement,
+            Err(_) => return Vec::new(),
+        };
+        let mut values: Vec<&dyn rusqlite::ToSql> = Vec::with_capacity(ids.len() + 1);
+        values.push(&owner_id);
+        values.extend(ids.iter().map(|id| id as &dyn rusqlite::ToSql));
+
+        let rows = match statement.query_map(rusqlite::params_from_iter(values), |row| {
+            let status = Self::str_to_status(&row.get::<_, String>(1)?);
+            let simc_input: String = row.get(5)?;
+            let linked_name: Option<String> = row.get(6)?;
+            let player_name = linked_name
+                .clone()
+                .or_else(|| extract_result_summary(&None, &simc_input).player_name);
+            let queue_position = row
+                .get::<_, Option<i64>>(7)?
+                .and_then(|position| usize::try_from(position).ok());
+
+            Ok(SimStatusSummary {
+                id: row.get(0)?,
+                progress: if status == JobStatus::Done {
+                    100
+                } else {
+                    row.get(2)?
+                },
+                status,
+                queue_position,
+                created_at: row.get(3)?,
+                sim_type: row.get(4)?,
+                player_name,
+                linked_name,
+            })
+        }) {
+            Ok(rows) => rows,
+            Err(_) => return Vec::new(),
+        };
+
+        let mut summaries: HashMap<String, SimStatusSummary> = rows
+            .filter_map(Result::ok)
+            .map(|summary| (summary.id.clone(), summary))
+            .collect();
+        ids.iter().filter_map(|id| summaries.remove(id)).collect()
     }
 
     fn list_queue(&self, owner_id: Option<&str>) -> Vec<JobSummary> {
@@ -805,10 +890,37 @@ impl JobStorage for SqliteStorage {
         .unwrap_or(0)
     }
 
+    fn get_history_stats_owned(&self, owner_id: &str) -> (usize, u64) {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT COUNT(*), COALESCE(SUM(
+                LENGTH(CAST(simc_input AS BLOB)) +
+                IFNULL(LENGTH(CAST(result_json AS BLOB)), 0) +
+                IFNULL(LENGTH(CAST(raw_json AS BLOB)), 0) +
+                IFNULL(LENGTH(CAST(html_report AS BLOB)), 0) +
+                IFNULL(LENGTH(CAST(text_output AS BLOB)), 0) +
+                IFNULL(LENGTH(CAST(combo_metadata_json AS BLOB)), 0)
+            ), 0) FROM jobs WHERE owner_id = ?1",
+            params![owner_id],
+            |row| {
+                Ok((
+                    row.get::<_, i64>(0)?.max(0) as usize,
+                    row.get::<_, i64>(1)?.max(0) as u64,
+                ))
+            },
+        )
+        .unwrap_or((0, 0))
+    }
+
     fn clear_history_owned(&self, owner_id: &str) {
         let conn = self.conn.lock().unwrap();
-        conn.execute("DELETE FROM jobs WHERE owner_id = ?1", params![owner_id])
-            .ok();
+        conn.execute(
+            "DELETE FROM jobs
+             WHERE owner_id = ?1
+               AND status IN ('done', 'failed', 'cancelled')",
+            params![owner_id],
+        )
+        .ok();
     }
 
     fn get_max_jobs(&self) -> usize {
@@ -830,11 +942,16 @@ impl JobStorage for SqliteStorage {
         )
         .ok();
 
-        conn.execute(
-            "DELETE FROM jobs WHERE pinned = 0 AND id NOT IN (SELECT id FROM jobs WHERE pinned = 0 ORDER BY created_at DESC LIMIT ?1)",
-            params![limit as u32],
-        )
-        .ok();
+        let owners = conn
+            .prepare("SELECT DISTINCT owner_id FROM jobs")
+            .and_then(|mut stmt| {
+                stmt.query_map([], |row| row.get::<_, String>(0))?
+                    .collect::<rusqlite::Result<Vec<_>>>()
+            })
+            .unwrap_or_default();
+        for owner_id in owners {
+            Self::prune_terminal_jobs(&conn, &owner_id, limit);
+        }
     }
 
     fn get_max_parallel_jobs(&self) -> usize {
@@ -1287,6 +1404,19 @@ mod tests {
         }
     }
 
+    fn terminal_job(
+        id: &str,
+        created_at: &str,
+        simc_input: &str,
+        result_json: Option<&str>,
+        pinned: bool,
+    ) -> Job {
+        let mut job = make_job(id, created_at, simc_input, result_json, pinned);
+        job.status = JobStatus::Done;
+        job.progress_pct = 100;
+        job
+    }
+
     fn pending_job(id: &str, owner_id: &str) -> Job {
         let mut job = make_job(id, "2026-01-01T00:00:00Z", "mage=\"Tester\"\n", None, false);
         job.owner_id = owner_id.to_string();
@@ -1449,21 +1579,21 @@ mod tests {
         let (_dir, storage) = create_storage();
         storage.set_max_jobs(1);
 
-        storage.insert(make_job(
+        storage.insert(terminal_job(
             "pinned",
             "2026-02-01T00:00:00Z",
             "mage=\"Pinned\"\nserver=illidan\n",
             None,
             true,
         ));
-        storage.insert(make_job(
+        storage.insert(terminal_job(
             "old-unpinned",
             "2026-02-02T00:00:00Z",
             "mage=\"Old\"\nserver=illidan\n",
             None,
             false,
         ));
-        storage.insert(make_job(
+        storage.insert(terminal_job(
             "new-unpinned",
             "2026-02-03T00:00:00Z",
             "mage=\"New\"\nserver=illidan\n",
@@ -1474,6 +1604,116 @@ mod tests {
         assert!(storage.get("pinned").is_some());
         assert!(storage.get("old-unpinned").is_none());
         assert!(storage.get("new-unpinned").is_some());
+    }
+
+    #[test]
+    fn sqlite_active_jobs_survive_retention_and_history_clear() {
+        let (_dir, storage) = create_storage();
+        storage.set_max_jobs(1);
+
+        storage.insert(terminal_job(
+            "job-old-terminal",
+            "2026-01-01T00:00:00Z",
+            "mage=Old\n",
+            None,
+            false,
+        ));
+        let mut pending = pending_job("job-pending", "local-guest");
+        pending.created_at = "2026-01-02T00:00:00Z".to_string();
+        storage.insert(pending);
+        let mut running = pending_job("job-running", "local-guest");
+        running.status = JobStatus::Running;
+        running.created_at = "2026-01-03T00:00:00Z".to_string();
+        storage.insert(running);
+        let mut paused = pending_job("job-paused", "local-guest");
+        paused.status = JobStatus::Paused;
+        paused.created_at = "2026-01-04T00:00:00Z".to_string();
+        storage.insert(paused);
+        storage.insert(terminal_job(
+            "job-pinned-terminal",
+            "2026-01-01T00:00:00Z",
+            "mage=Pinned\n",
+            None,
+            true,
+        ));
+        storage.insert(terminal_job(
+            "job-new-terminal",
+            "2026-01-05T00:00:00Z",
+            "mage=New\n",
+            None,
+            false,
+        ));
+
+        assert!(storage.get("job-old-terminal").is_none());
+        assert_eq!(
+            storage.get("job-pending").expect("pending job").status,
+            JobStatus::Pending
+        );
+        assert_eq!(
+            storage.get("job-running").expect("running job").status,
+            JobStatus::Running
+        );
+        assert_eq!(
+            storage.get("job-paused").expect("paused job").status,
+            JobStatus::Paused
+        );
+        assert!(storage.get("job-pinned-terminal").is_some());
+
+        storage.clear_history();
+
+        assert!(storage.get("job-pending").is_some());
+        assert!(storage.get("job-running").is_some());
+        assert!(storage.get("job-paused").is_some());
+        assert!(storage.get("job-new-terminal").is_none());
+    }
+
+    #[test]
+    fn sqlite_max_jobs_retention_is_scoped_per_owner_and_preserves_active_jobs() {
+        let (_dir, storage) = create_storage();
+        storage.set_max_jobs(10);
+
+        for (owner_id, prefix) in [("alice", "alice"), ("bob", "bob")] {
+            for (created_at, suffix) in [
+                ("2026-01-01T00:00:00Z", "old"),
+                ("2026-01-02T00:00:00Z", "middle"),
+                ("2026-01-03T00:00:00Z", "new"),
+            ] {
+                let mut job = terminal_job(
+                    &format!("{prefix}-{suffix}"),
+                    created_at,
+                    "mage=History\n",
+                    None,
+                    false,
+                );
+                job.owner_id = owner_id.to_string();
+                storage.insert(job);
+            }
+
+            let mut active = pending_job(&format!("{prefix}-active"), owner_id);
+            active.status = JobStatus::Running;
+            active.created_at = "2025-12-01T00:00:00Z".to_string();
+            storage.insert(active);
+
+            let mut pinned = terminal_job(
+                &format!("{prefix}-pinned"),
+                "2025-12-01T00:00:00Z",
+                "mage=Pinned\n",
+                None,
+                true,
+            );
+            pinned.owner_id = owner_id.to_string();
+            storage.insert(pinned);
+        }
+
+        storage.set_max_jobs(2);
+
+        for prefix in ["alice", "bob"] {
+            assert!(storage.get(&format!("{prefix}-old")).is_none());
+            assert!(storage.get(&format!("{prefix}-middle")).is_some());
+            assert!(storage.get(&format!("{prefix}-new")).is_some());
+            assert!(storage.get(&format!("{prefix}-active")).is_some());
+            assert!(storage.get(&format!("{prefix}-pinned")).is_some());
+        }
     }
 
     #[test]
@@ -1601,7 +1841,7 @@ mod tests {
     fn sqlite_batch_delete_and_clear_history_update_storage_state() {
         let (_dir, storage) = create_storage();
 
-        let mut batch_a = make_job(
+        let mut batch_a = terminal_job(
             "job-a",
             "2026-02-01T00:00:00Z",
             "mage=\"Alice\"\nserver=illidan\n",
@@ -1612,7 +1852,7 @@ mod tests {
         batch_a.combo_metadata_json = Some(r#"{"_combo_count":1}"#.to_string());
         storage.insert(batch_a);
 
-        let mut batch_b = make_job(
+        let mut batch_b = terminal_job(
             "job-b",
             "2026-02-02T00:00:00Z",
             "warrior=\"Bob\"\nserver=stormrage\n",
@@ -1916,7 +2156,7 @@ mod tests {
     #[test]
     fn sqlite_isolates_jobs_routes_profiles_and_history_by_owner() {
         let (_dir, storage) = create_storage();
-        let mut alice_job = make_job(
+        let mut alice_job = terminal_job(
             "alice-job",
             "2026-01-01T00:00:00Z",
             "mage=Alice",
@@ -1924,7 +2164,7 @@ mod tests {
             false,
         );
         alice_job.owner_id = "alice".to_string();
-        let mut bob_job = make_job("bob-job", "2026-01-02T00:00:00Z", "mage=Bob", None, false);
+        let mut bob_job = terminal_job("bob-job", "2026-01-02T00:00:00Z", "mage=Bob", None, false);
         bob_job.owner_id = "bob".to_string();
         storage.insert(alice_job);
         storage.insert(bob_job);

@@ -95,6 +95,82 @@ function isTerminalSimStatus(status: string): boolean {
   return status === 'done' || status === 'failed' || status === 'cancelled';
 }
 
+interface CompactSimulationStatus {
+  id: string;
+  status: string;
+  progress?: number;
+  queue_position?: number | null;
+  created_at?: string;
+  sim_type?: string;
+  player_name?: string | null;
+  linked_name?: string | null;
+}
+
+function normalizeSimulationStatus(value: unknown): string {
+  return typeof value === 'string' ? value.toLowerCase() : '';
+}
+
+export function parseCompactSimulationStatuses(payload: unknown): CompactSimulationStatus[] | null {
+  const objectPayload =
+    payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : null;
+  const records: unknown[] | null = Array.isArray(payload)
+    ? payload
+    : Array.isArray(objectPayload?.statuses)
+      ? objectPayload.statuses
+      : Array.isArray(objectPayload?.jobs)
+        ? objectPayload.jobs
+        : null;
+  if (!records) return null;
+
+  return records
+    .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === 'object')
+    .map((entry) => ({
+      id: String(entry.id || ''),
+      status: normalizeSimulationStatus(entry.status),
+      ...(typeof entry.progress === 'number' ? { progress: entry.progress } : {}),
+      ...(entry.queue_position === null || typeof entry.queue_position === 'number'
+        ? { queue_position: entry.queue_position as number | null }
+        : {}),
+      ...(typeof entry.created_at === 'string' ? { created_at: entry.created_at } : {}),
+      ...(typeof entry.sim_type === 'string' ? { sim_type: entry.sim_type } : {}),
+      ...(typeof entry.player_name === 'string' ? { player_name: entry.player_name } : {}),
+      ...(typeof entry.linked_name === 'string' ? { linked_name: entry.linked_name } : {}),
+    }))
+    .filter((entry) => entry.id.length > 0);
+}
+
+export function mapCompactSimulationStatuses(
+  ids: string[],
+  payload: unknown
+): Record<string, string> | null {
+  const records = parseCompactSimulationStatuses(payload);
+  if (!records) return null;
+  const byId = new Map(records.map((entry) => [entry.id, entry]));
+  return Object.fromEntries(ids.map((id) => [id, byId.get(id)?.status || 'unavailable']));
+}
+
+export function isTransientPollingError(error: unknown): boolean {
+  const candidate = error as { status?: unknown; code?: unknown; name?: unknown } | null;
+  const status = typeof candidate?.status === 'number' ? candidate.status : 0;
+  return (
+    candidate?.code === 'NETWORK_UNAVAILABLE' ||
+    candidate?.name === 'AbortError' ||
+    status === 408 ||
+    status === 425 ||
+    status === 429 ||
+    status >= 500
+  );
+}
+
+export function shouldContinueScenarioPolling(statuses: Record<string, string>): boolean {
+  return Object.values(statuses).some(isActiveSimStatus);
+}
+
+export function getStatusRetryDelay(retryAttempt: number): number {
+  const attempt = Math.max(1, Math.min(6, Math.floor(retryAttempt)));
+  return Math.min(2000 * 2 ** (attempt - 1), 15_000);
+}
+
 const iconCache = new Map<string, string>();
 
 function useIcons(entries: { type: 'spell' | 'item'; id: number }[]) {
@@ -402,7 +478,9 @@ export default function SimResultClient({ initialJob, shared = false }: SimResul
   const [activeScenarioId, setActiveScenarioId] = useState(initialJob?.id || id);
 
   const [job, setJob] = useState<JobData | null>(initialJob || null);
+  const jobRef = useRef<JobData | null>(initialJob || null);
   const [fetchError, setFetchError] = useState('');
+  const [statusRetryNonce, setStatusRetryNonce] = useState(0);
   const [logLines, setLogLines] = useState<string[]>([]);
   const [showLogs, setShowLogs] = useState(true);
   const logCursorRef = useRef(0);
@@ -412,9 +490,16 @@ export default function SimResultClient({ initialJob, shared = false }: SimResul
   const [siblings, setSiblings] = useState<ScenarioSibling[] | null>(null);
   const [liveRelatedScenarios, setLiveRelatedScenarios] = useState<ScenarioSibling[]>([]);
   const [siblingStatuses, setSiblingStatuses] = useState<Record<string, string>>({});
+  const siblingStatusesRef = useRef<Record<string, string>>({});
+  const statusEndpointAvailableRef = useRef<boolean | null>(null);
   const [rerunError, setRerunError] = useState('');
   const [rerunning, setRerunning] = useState(false);
   const previousStatusRef = useRef<string | null>(null);
+
+  const retryStatus = useCallback(() => {
+    setFetchError('');
+    setStatusRetryNonce((value) => value + 1);
+  }, []);
 
   useEffect(() => {
     if (shared) return;
@@ -425,6 +510,7 @@ export default function SimResultClient({ initialJob, shared = false }: SimResul
 
   useEffect(() => {
     previousStatusRef.current = null;
+    jobRef.current = null;
   }, [activeScenarioId]);
 
   const r = job?.result as any;
@@ -651,37 +737,81 @@ export default function SimResultClient({ initialJob, shared = false }: SimResul
   useEffect(() => {
     if (shared) return;
     if (toolbarScenarios.length === 0) return;
-    const siblingList = toolbarScenarios;
+    const siblingList = [...toolbarScenarios];
+    if (activeScenarioId && !siblingList.some((scenario) => scenario.id === activeScenarioId)) {
+      siblingList.unshift({
+        id: activeScenarioId,
+        fightStyle: job?.fight_style || 'Patchwerk',
+        targetCount: 0,
+        fightLength: 0,
+      });
+    }
     const maxPolledSiblings = 40;
     const limitedSiblings = siblingList.slice(0, maxPolledSiblings);
-    const currentIsActive =
-      job?.status === 'pending' || job?.status === 'running' || job?.status === 'paused';
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
 
     async function pollSiblingStatuses() {
-      const statuses: Record<string, string> = {};
-      const results = await Promise.all(
-        limitedSiblings.map(async (s) => {
-          try {
-            const data = await fetchJson<JobData>(`${API_URL}/api/sim/${s.id}`);
-            return { id: s.id, status: data.status || 'pending' };
-          } catch {
-            // Do not keep polling forever for missing/unreachable related jobs.
-            return { id: s.id, status: 'failed' };
+      const previousStatuses = siblingStatusesRef.current;
+      let compactStatuses: Record<string, string> | null = null;
+
+      if (statusEndpointAvailableRef.current !== false) {
+        try {
+          const ids = limitedSiblings.map((scenario) => scenario.id).join(',');
+          const payload = await fetchJson<unknown>(
+            `${API_URL}/api/sim/status?ids=${encodeURIComponent(ids)}`
+          );
+          compactStatuses = mapCompactSimulationStatuses(
+            limitedSiblings.map((scenario) => scenario.id),
+            payload
+          );
+          if (!compactStatuses) throw new Error('Invalid compact simulation status response.');
+          statusEndpointAvailableRef.current = true;
+        } catch (error) {
+          // Older desktop backends do not have the batch endpoint yet. Keep
+          // the per-job path as a compatibility fallback, while preserving a
+          // known active state through temporary outages.
+          if ((error as { status?: unknown })?.status === 404) {
+            statusEndpointAvailableRef.current = false;
           }
-        })
-      );
-      for (const item of results) {
-        statuses[item.id] = item.status;
+        }
       }
+
+      const statuses: Record<string, string> = {};
+      if (compactStatuses) {
+        Object.assign(statuses, compactStatuses);
+      } else {
+        const results = await Promise.all(
+          limitedSiblings.map(async (scenario) => {
+            try {
+              const data = await fetchJson<JobData>(`${API_URL}/api/sim/${scenario.id}`);
+              return {
+                id: scenario.id,
+                status: normalizeSimulationStatus(data.status) || 'pending',
+              };
+            } catch (error) {
+              const previous = previousStatuses[scenario.id];
+              return {
+                id: scenario.id,
+                status: isTransientPollingError(error) && previous ? previous : 'unavailable',
+              };
+            }
+          })
+        );
+        for (const item of results) statuses[item.id] = item.status;
+      }
+
       if (!active) return;
-      if (activeScenarioId && job?.status) statuses[activeScenarioId] = job.status;
+      if (activeScenarioId && job?.status) {
+        statuses[activeScenarioId] = normalizeSimulationStatus(job.status);
+      }
+      siblingStatusesRef.current = statuses;
       setSiblingStatuses(statuses);
 
-      // Avoid idle background disk/network churn: only continuously poll while
-      // the currently viewed sim is active.
-      if (currentIsActive) timer = setTimeout(pollSiblingStatuses, 2000);
+      // Keep the toolbar current until every tracked scenario is terminal.
+      if (shouldContinueScenarioPolling(statuses)) {
+        timer = setTimeout(pollSiblingStatuses, 2000);
+      }
     }
 
     pollSiblingStatuses();
@@ -689,7 +819,7 @@ export default function SimResultClient({ initialJob, shared = false }: SimResul
       active = false;
       clearTimeout(timer);
     };
-  }, [activeScenarioId, job?.status, shared, toolbarScenarios]);
+  }, [activeScenarioId, job?.fight_style, job?.status, shared, toolbarScenarios]);
 
   useEffect(() => {
     if (shared) return;
@@ -703,10 +833,18 @@ export default function SimResultClient({ initialJob, shared = false }: SimResul
     logCursorRef.current = 0;
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
+    let retryAttempt = 0;
+
+    const schedulePoll = (delayMs: number) => {
+      if (active) timer = setTimeout(() => void poll(), delayMs);
+    };
+
     async function poll() {
       try {
         const data = await fetchJson<JobData>(`${API_URL}/api/sim/${activeScenarioId}`);
         if (active) {
+          retryAttempt = 0;
+          setFetchError('');
           const previousStatus = previousStatusRef.current;
           if (
             previousStatus &&
@@ -736,16 +874,29 @@ export default function SimResultClient({ initialJob, shared = false }: SimResul
             });
           }
           previousStatusRef.current = data.status;
+          jobRef.current = data;
           setJob(data);
         }
         if (
           active &&
           (data.status === 'pending' || data.status === 'running' || data.status === 'paused')
         ) {
-          timer = setTimeout(poll, 2000);
+          schedulePoll(2000);
         }
       } catch (err) {
-        if (active) setFetchError(err instanceof Error ? err.message : 'Failed to fetch status');
+        if (!active) return;
+        retryAttempt = Math.min(retryAttempt + 1, 6);
+        setFetchError(
+          err instanceof Error && err.message.trim() ? err.message : 'Failed to fetch status'
+        );
+        // Keep the last known job visible and retry with a capped exponential
+        // backoff so a temporary outage cannot strand the result page.
+        if (
+          isTransientPollingError(err) &&
+          (!jobRef.current || isActiveSimStatus(jobRef.current.status))
+        ) {
+          schedulePoll(getStatusRetryDelay(retryAttempt));
+        }
       }
     }
     poll();
@@ -753,7 +904,7 @@ export default function SimResultClient({ initialJob, shared = false }: SimResul
       active = false;
       clearTimeout(timer);
     };
-  }, [activeScenarioId, notify, router, shared]);
+  }, [activeScenarioId, notify, router, shared, statusRetryNonce]);
 
   // Keep polling while active so the stats card can show the current phase ETA
   // even when the log console is collapsed.
@@ -931,11 +1082,18 @@ export default function SimResultClient({ initialJob, shared = false }: SimResul
     [activeScenarioId]
   );
 
-  if (fetchError) {
+  if (fetchError && !job) {
     return (
       <div className="card border-red-500/20 bg-red-500/[0.03] p-6">
         <p className="mb-1 text-sm font-semibold text-red-400">Error</p>
         <p className="text-sm text-red-400/60">{fetchError}</p>
+        <button
+          type="button"
+          onClick={retryStatus}
+          className="mt-4 rounded-lg border border-red-400/30 px-3 py-2 text-sm font-semibold text-red-200 transition-colors hover:bg-red-500/10"
+        >
+          Retry now
+        </button>
       </div>
     );
   }
@@ -1069,9 +1227,26 @@ export default function SimResultClient({ initialJob, shared = false }: SimResul
     </div>
   );
 
+  const statusErrorBanner = fetchError ? (
+    <div
+      role="alert"
+      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-400/25 bg-amber-500/[0.06] px-4 py-3 text-sm text-amber-100"
+    >
+      <span>Reconnecting… showing the last successful simulation update. {fetchError}</span>
+      <button
+        type="button"
+        onClick={retryStatus}
+        className="rounded-lg border border-amber-300/30 px-3 py-1.5 text-xs font-semibold text-amber-100 transition-colors hover:bg-amber-500/10"
+      >
+        Retry now
+      </button>
+    </div>
+  ) : null;
+
   if (job.status === 'pending' || job.status === 'running' || job.status === 'paused') {
     return (
       <div className="space-y-4">
+        {statusErrorBanner}
         {scenarioToolbar}
         <SimStatus
           status={job.status}
@@ -1173,14 +1348,13 @@ export default function SimResultClient({ initialJob, shared = false }: SimResul
       : info?.kind === 'character'
         ? info.className
         : null;
-  const characterBackgroundUrl = !lightMode
-    ? buildCharacterBackgroundUrl(playerClass)
-    : null;
+  const characterBackgroundUrl = !lightMode ? buildCharacterBackgroundUrl(playerClass) : null;
   const hasEquippedGear = Boolean(equippedGear && Object.keys(equippedGear).length > 0);
   const hasStatsPanel = Boolean(baselineLiveStats || simulatedStats);
 
   return (
     <div className="space-y-6">
+      {statusErrorBanner}
       {scenarioToolbar}
 
       {isTopGear && isTrinketTierHeatmap ? (

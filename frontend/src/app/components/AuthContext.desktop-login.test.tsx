@@ -21,6 +21,7 @@ vi.mock('../lib/api', () => ({
   isNetworkUnavailableError: vi.fn(() => false),
   saveBlizzardCredentialProfile: mocks.saveBlizzardCredentialProfile,
   setSessionToken: vi.fn(),
+  switchBrowserUserScope: vi.fn(),
 }));
 
 vi.mock('@tauri-apps/api/core', () => ({

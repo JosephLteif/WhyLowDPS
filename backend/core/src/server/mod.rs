@@ -501,6 +501,10 @@ mod tests {
                     web::post().to(|| async { HttpResponse::Ok().finish() }),
                 )
                 .route(
+                    "/api/sim/status",
+                    web::get().to(|| async { HttpResponse::Ok().finish() }),
+                )
+                .route(
                     "/api/sim/{id}",
                     web::get().to(|| async { HttpResponse::Ok().finish() }),
                 )
@@ -544,6 +548,15 @@ mod tests {
         let status_response =
             call_service(&app, TestRequest::get().uri("/api/sim/job-1").to_request()).await;
         assert_eq!(status_response.status(), actix_web::http::StatusCode::OK);
+
+        let statuses_response = call_service(
+            &app,
+            TestRequest::get()
+                .uri("/api/sim/status?ids=job-1")
+                .to_request(),
+        )
+        .await;
+        assert_eq!(statuses_response.status(), actix_web::http::StatusCode::OK);
 
         let data_file_response = call_service(
             &app,
@@ -1297,6 +1310,10 @@ pub async fn start_with_storage_bind_options_and_simc_runtime(
                     web::get().to(upgrade_compare::get_upgrade_options_handler),
                 )
                 // Job management routes
+                .route(
+                    "/api/sim/status",
+                    web::get().to(job_handlers::list_sim_statuses),
+                )
                 .route("/api/sim/{id}", web::get().to(job_handlers::get_sim_status))
                 .route(
                     "/api/sim/{id}/rerun",

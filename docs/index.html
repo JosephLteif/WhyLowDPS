@@ -284,7 +284,7 @@
             SimulationCraft runtime packaged together.
           </p>
           <ul class="check-list">
-            <li>amd64 Docker image with persistent data</li>
+            <li>Multi-architecture Docker image with persistent data</li>
             <li>Installable PWA with update guidance</li>
             <li>Separate user data and administrator access controls</li>
           </ul>
@@ -494,7 +494,7 @@
     </header>
     <div class="modal-body">
       <ol class="modal-steps">
-        <li><strong>Use an amd64 Linux host or Docker Desktop with WSL2.</strong><span>Arm64 is not currently supported because the companion SimulationCraft runtime is published for linux-x64.</span></li>
+        <li><strong>Use an amd64 or ARM64 Linux host or Docker Desktop with WSL2.</strong><span>Current releases publish native application images and SimulationCraft runtimes for both architectures.</span></li>
         <li><strong>Use the latest image and configure the host.</strong><span>The standard Compose file follows <code>ghcr.io/josephlteif/whylowdps:latest</code>. Set the private host IP, client-facing port, unique JWT secret, session encryption key, and bootstrap administrator BattleTag. Keep the persistent <code>whylowdps-data</code> volume and secrets backed up.</span></li>
         <li><strong>Pull and start with the environment file.</strong><span>Use <code>docker compose --env-file .env.docker pull</code>, then <code>docker compose --env-file .env.docker up -d</code>. Open the host address from the trusted LAN and add other allowed users from Manage Users.</span></li>
       </ol>

@@ -325,8 +325,12 @@ pub fn validate_simc_binary(path: &Path) -> Result<(), String> {
 pub fn current_platform() -> &'static str {
     if cfg!(windows) {
         "win64"
-    } else if cfg!(target_os = "linux") {
+    } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
         "linux-x64"
+    } else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
+        "linux-arm64"
+    } else if cfg!(target_os = "linux") {
+        "linux-unsupported"
     } else if cfg!(target_os = "macos") {
         "macos"
     } else {
@@ -790,6 +794,20 @@ mod tests {
         assert!(!simc_binary_name().is_empty());
     }
 
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_platform_matches_compiled_architecture() {
+        let expected = if cfg!(target_arch = "x86_64") {
+            "linux-x64"
+        } else if cfg!(target_arch = "aarch64") {
+            "linux-arm64"
+        } else {
+            "linux-unsupported"
+        };
+
+        assert_eq!(current_platform(), expected);
+    }
+
     #[test]
     fn validate_simc_binary_reports_missing_path() {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -861,15 +879,23 @@ mod tests {
             channel: "weekly".to_string(),
             version: "20260622".to_string(),
             published_at: "2026-06-22T00:00:00Z".to_string(),
-            assets: vec![SimcManifestAsset {
-                platform: "win64".to_string(),
-                url: "https://example.invalid/simc-win64.zip".to_string(),
-                sha256: "a".repeat(64),
-            }],
+            assets: vec![
+                SimcManifestAsset {
+                    platform: "win64".to_string(),
+                    url: "https://example.invalid/simc-win64.zip".to_string(),
+                    sha256: "a".repeat(64),
+                },
+                SimcManifestAsset {
+                    platform: "linux-arm64".to_string(),
+                    url: "https://example.invalid/simc-linux-arm64.zip".to_string(),
+                    sha256: "b".repeat(64),
+                },
+            ],
         };
 
         assert!(manifest.asset_for_platform("win64").is_some());
         assert!(manifest.asset_for_platform("linux-x64").is_none());
+        assert!(manifest.asset_for_platform("linux-arm64").is_some());
     }
 
     #[test]

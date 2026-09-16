@@ -370,6 +370,12 @@ jobs:
         with:
           ref: ${{ env.RELEASE_TAG }}
 
+      - name: Set up QEMU for ARM64 container builds
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
       - name: Log in to GHCR
         uses: docker/login-action@v4
         with:
@@ -399,11 +405,88 @@ jobs:
           cp backend/resources/zones-encounters-index.json backend/resources/data/zones-encounters-index.json
           touch backend/resources/data/.keep
 
-      - name: Build private-hosting image
+      - name: Build amd64 image for smoke testing
         uses: docker/build-push-action@v7
         with:
           context: .
+          platforms: linux/amd64
           load: true
+          tags: whylowdps-release-smoke:amd64
+          build-args: |
+            WHYLOWDPS_DEPLOYMENT=hosted-private
+            WHYLOWDPS_VERSION=${{ steps.meta.outputs.version }}
+            WHYLOWDPS_REVISION=${{ github.event_name == 'workflow_dispatch' && inputs.release_action == 'promote-dev' && needs.promote-dev.outputs.release_sha || github.event_name == 'workflow_dispatch' && inputs.release_action != 'republish' && inputs.release_action != 'promote-dev' && needs.bump-version-stable.outputs.release_sha || github.sha }}
+
+      - name: Build arm64 image for smoke testing
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/arm64
+          load: true
+          tags: whylowdps-release-smoke:arm64
+          build-args: |
+            WHYLOWDPS_DEPLOYMENT=hosted-private
+            WHYLOWDPS_VERSION=${{ steps.meta.outputs.version }}
+            WHYLOWDPS_REVISION=${{ github.event_name == 'workflow_dispatch' && inputs.release_action == 'promote-dev' && needs.promote-dev.outputs.release_sha || github.event_name == 'workflow_dispatch' && inputs.release_action != 'republish' && inputs.release_action != 'promote-dev' && needs.bump-version-stable.outputs.release_sha || github.sha }}
+
+      - name: Smoke test amd64 and arm64 containers
+        shell: bash
+        env:
+          AMD64_IMAGE: whylowdps-release-smoke:amd64
+          ARM64_IMAGE: whylowdps-release-smoke:arm64
+        run: |
+          set -euo pipefail
+
+          CONTAINERS=()
+          cleanup() {
+            for container in "${CONTAINERS[@]}"; do
+              docker logs "${container}" 2>&1 || true
+              docker rm -f "${container}" >/dev/null 2>&1 || true
+            done
+          }
+          trap cleanup EXIT
+
+          smoke() {
+            local platform="$1"
+            local image="$2"
+            local port="$3"
+            local container="whylowdps-release-smoke-${platform//\//-}"
+            CONTAINERS+=("${container}")
+
+            docker run --detach \
+              --platform "${platform}" \
+              --name "${container}" \
+              --publish "127.0.0.1:${port}:8000" \
+              --env ALLOW_EXTERNAL_BIND=true \
+              --env JWT_SECRET=release-smoke-secret-012345678901234567890123 \
+              --env WHYLOWDPS_SECURE_COOKIES=false \
+              "${image}"
+
+            for attempt in $(seq 1 90); do
+              if curl --fail --silent "http://127.0.0.1:${port}/health"; then
+                break
+              fi
+              sleep 2
+            done
+
+            if ! curl --fail --silent "http://127.0.0.1:${port}/health" >/dev/null; then
+              echo "${platform} container did not become healthy"
+              return 1
+            fi
+
+            docker exec "${container}" sh -lc \
+              'test -x /data/simc-runtime/simc && /data/simc-runtime/simc display_build=2'
+          }
+
+          smoke linux/amd64 "${AMD64_IMAGE}" 18000
+          smoke linux/arm64 "${ARM64_IMAGE}" 18001
+
+      - name: Publish multi-platform image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
@@ -411,51 +494,20 @@ jobs:
             WHYLOWDPS_VERSION=${{ steps.meta.outputs.version }}
             WHYLOWDPS_REVISION=${{ github.event_name == 'workflow_dispatch' && inputs.release_action == 'promote-dev' && needs.promote-dev.outputs.release_sha || github.event_name == 'workflow_dispatch' && inputs.release_action != 'republish' && inputs.release_action != 'promote-dev' && needs.bump-version-stable.outputs.release_sha || github.sha }}
 
-      - name: Smoke test container
-        shell: bash
-        env:
-          IMAGE: ghcr.io/josephlteif/whylowdps:${{ steps.meta.outputs.version }}
-        run: |
-          set -euo pipefail
-          CONTAINER="whylowdps-release-smoke"
-          cleanup() {
-            docker logs "${CONTAINER}" 2>&1 || true
-            docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true
-          }
-          trap cleanup EXIT
-
-          docker run --detach \
-            --name "${CONTAINER}" \
-            --publish 127.0.0.1:18000:8000 \
-            --env ALLOW_EXTERNAL_BIND=true \
-            --env JWT_SECRET=release-smoke-secret-012345678901234567890123 \
-            --env WHYLOWDPS_SECURE_COOKIES=false \
-            "${IMAGE}"
-
-          for attempt in $(seq 1 45); do
-            if curl --fail --silent http://127.0.0.1:18000/health; then
-              break
-            fi
-            sleep 2
-          done
-
-          if ! curl --fail --silent http://127.0.0.1:18000/health >/dev/null; then
-            echo "Container did not become healthy"
-            exit 1
-          fi
-
-          docker exec "${CONTAINER}" sh -lc \
-            'test -x /data/simc-runtime/simc && /data/simc-runtime/simc display_build=2'
-
-      - name: Push release image tags
-        shell: bash
-        env:
-          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
-        run: |
-          set -euo pipefail
-          while IFS= read -r IMAGE; do
-            [[ -z "${IMAGE}" ]] || docker push "${IMAGE}"
-          done <<< "${IMAGE_TAGS}"
+      - name: Publish ARM64 fallback image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ghcr.io/josephlteif/whylowdps:latest-arm64
+            ghcr.io/josephlteif/whylowdps:${{ steps.meta.outputs.version }}-arm64
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            WHYLOWDPS_DEPLOYMENT=hosted-private
+            WHYLOWDPS_VERSION=${{ steps.meta.outputs.version }}
+            WHYLOWDPS_REVISION=${{ github.event_name == 'workflow_dispatch' && inputs.release_action == 'promote-dev' && needs.promote-dev.outputs.release_sha || github.event_name == 'workflow_dispatch' && inputs.release_action != 'republish' && inputs.release_action != 'promote-dev' && needs.bump-version-stable.outputs.release_sha || github.sha }}
 
       - name: Record published image digest
         id: digest

@@ -86,7 +86,9 @@ function writeCachedSimcRuntimeInfo(info: SimcRuntimeInfo | null) {
 
 export function currentSimcPlatform(): string {
   if (typeof navigator !== 'undefined' && /mac/i.test(navigator.platform)) return 'macos';
-  if (typeof navigator !== 'undefined' && /linux/i.test(navigator.platform)) return 'linux-x64';
+  if (typeof navigator !== 'undefined' && /linux/i.test(navigator.platform)) {
+    return /aarch64|arm64|armv8/i.test(navigator.platform) ? 'linux-arm64' : 'linux-x64';
+  }
   return 'win64';
 }
 

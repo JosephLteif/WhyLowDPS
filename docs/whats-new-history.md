@@ -6,7 +6,11 @@ Add new work under the `Unreleased` section. Stable bump and `promote-dev` relea
 
 ## Unreleased
 
-No unreleased changes yet.
+### Improvements
+
+#### Support ARM64 private Docker hosts
+
+Private Docker hosting now supports ARM64 Linux hosts with a native container image and SimulationCraft runtime, while the standard release tags continue to work on both amd64 and ARM64.
 
 ## v6.1.0 — 2026-09-08 — Release notes for v6.1.0
 

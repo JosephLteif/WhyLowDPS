@@ -6,7 +6,9 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ## [Unreleased]
 
-No unreleased changes yet.
+### Changed
+
+- Private Docker hosting now supports ARM64 Linux hosts with native container and SimulationCraft images while keeping the standard release tags multi-architecture.
 
 ## [6.1.0] - 2026-09-08
 

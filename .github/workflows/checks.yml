@@ -185,6 +185,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Set up QEMU for ARM64 container builds
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
       - name: Ensure container resource paths exist
         shell: bash
         run: |
@@ -201,6 +207,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
+          platforms: linux/amd64,linux/arm64
           push: false
           tags: whylowdps-pr-check:latest
 

@@ -32,3 +32,22 @@ test('buildChangelogPage renders the public release archive', () => {
   assert.doesNotMatch(page, /source-mode|dev:desktop|Desktop development now synchronizes/);
   assert.doesNotMatch(page, /docs\/whats-new-history\.md/);
 });
+
+test('buildChangelogPage removes internal workflow wording from release entries', () => {
+  const page = buildChangelogPage(`
+## v1.0.0 — 2026-01-01 — Release notes for v1.0.0
+
+### Improvements
+
+#### User-visible improvement
+
+The release is easier to use.
+
+#### Internal release workflow
+
+Keep unreleased notes separate before promote-dev; republish only rebuilds an existing tag.
+`);
+
+  assert.match(page, /The release is easier to use/);
+  assert.doesNotMatch(page, /unreleased|promote-dev|republish/i);
+});

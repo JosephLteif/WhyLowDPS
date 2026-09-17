@@ -1,5 +1,5 @@
 {
-  "contentRevision": "Unreleased-9265d367fdac",
+  "contentRevision": "Unreleased-ae947c6721a6",
   "releases": [
     {
       "version": "Unreleased",
@@ -10,7 +10,14 @@
           "category": "improvement",
           "title": "Support ARM64 private Docker hosts",
           "summary": "Private Docker hosting now supports ARM64 Linux hosts with a native container image and SimulationCraft runtime, while the standard release tags continue to work on both amd64 and ARM64."
-        },
+        }
+      ]
+    },
+    {
+      "version": "v6.1.0",
+      "date": "2026-09-08",
+      "title": "Release notes for v6.1.0",
+      "entries": [
         {
           "category": "improvement",
           "title": "Keep What’s New focused on the current major release",

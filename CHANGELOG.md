@@ -8,6 +8,7 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ### Changed
 
+- Private Docker hosting now supports ARM64 Linux hosts with native container and SimulationCraft images while keeping the standard release tags multi-architecture.
 - What's New now keeps every released minor and patch update from the installed major version visible and resets to the new major version when the app moves forward.
 - The GitHub Pages release-notes archive now hides maintainer workflow details and provides a version selector with shareable per-release URLs.
 - Result pages now keep the last successful simulation state visible during transient status failures, retry with capped backoff, and use compact owner-scoped polling for scenario siblings.

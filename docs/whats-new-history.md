@@ -8,6 +8,10 @@ Add new work under the `Unreleased` section. Stable bump and `promote-dev` relea
 
 ### Improvements
 
+#### Support ARM64 private Docker hosts
+
+Private Docker hosting now supports ARM64 Linux hosts with a native container image and SimulationCraft runtime, while the standard release tags continue to work on both amd64 and ARM64.
+
 #### Keep What’s New focused on the current major release
 
 The app's What's New feed now keeps every released minor and patch update from the installed major version visible, then resets to the new major version when the app moves forward.

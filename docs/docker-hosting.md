@@ -14,15 +14,24 @@ instance on the configured host and does not use desktop pairing.
 
 ## Production requirements
 
-- An amd64 Linux host, or Docker Desktop using its WSL2 Linux engine.
+- An amd64 or ARM64 Linux host, or Docker Desktop using its WSL2 Linux engine.
 - Docker Engine with the Compose plugin (`docker compose version`).
 - A stable private IPv4 address or DHCP reservation for the host.
 - The selected TCP port allowed only from the trusted private network.
-- A current WhyLowDPS release with a published `linux-x64` SimulationCraft
-  runtime on the selected `SIMC_CHANNEL`.
+- A current WhyLowDPS release with published `linux-x64` and `linux-arm64`
+  SimulationCraft runtimes on the selected `SIMC_CHANNEL`.
 
-Arm64 hosts are not currently supported because the companion runtime is
-published for `linux-x64`.
+The image automatically selects the native container and SimulationCraft
+runtime for amd64 or ARM64 Linux. Older releases that predate ARM64 runtime
+publishing remain amd64-only.
+
+The normal `latest` and version tags are multi-architecture. Each release also
+publishes `latest-arm64` and `<version>-arm64` fallback tags for environments
+that require an explicitly ARM64-only image.
+
+For the first ARM64-capable rollout, publish the matching channel from the
+companion runtime repository before publishing the WhyLowDPS image. The app
+release workflow smoke-tests both architectures against that channel.
 
 ## First installation
 

@@ -54,6 +54,24 @@ test('release workflow publishes latest and versioned tags and records rollback 
   assert.match(workflow, /finalize-release:[\s\S]*if:[\s\S]*always\(\) &&/);
 });
 
+test('release workflow builds and smoke-tests both Linux container architectures', () => {
+  const workflow = readRepositoryFile('.github/workflows/release.yml');
+
+  assert.match(workflow, /docker\/setup-qemu-action@v4/);
+  assert.match(workflow, /platforms: linux\/amd64,linux\/arm64/);
+  assert.match(workflow, /--platform "\$\{platform\}"/);
+  assert.match(workflow, /whylowdps-release-smoke:arm64/);
+});
+
+test('release workflow publishes an explicit ARM64 fallback image', () => {
+  const workflow = readRepositoryFile('.github/workflows/release.yml');
+
+  assert.match(
+    workflow,
+    /name: Publish ARM64 fallback image[\s\S]*platforms: linux\/arm64[\s\S]*push: true[\s\S]*ghcr\.io\/josephlteif\/whylowdps:latest-arm64[\s\S]*ghcr\.io\/josephlteif\/whylowdps:\$\{\{ steps\.meta\.outputs\.version \}\}-arm64/
+  );
+});
+
 test('release workflow has a compact stable action selector', () => {
   const workflow = readRepositoryFile('.github/workflows/release.yml');
 

@@ -1,10 +1,20 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildSimcRuntimeInfo, fetchSimcRuntimeInfo } from './simc-runtime-release';
+import {
+  buildSimcRuntimeInfo,
+  currentSimcPlatform,
+  fetchSimcRuntimeInfo,
+} from './simc-runtime-release';
 
 describe('buildSimcRuntimeInfo', () => {
   afterEach(() => {
     localStorage.clear();
     vi.restoreAllMocks();
+  });
+
+  it('detects the ARM64 Linux runtime from the browser platform', () => {
+    vi.spyOn(window.navigator, 'platform', 'get').mockReturnValue('Linux aarch64');
+
+    expect(currentSimcPlatform()).toBe('linux-arm64');
   });
 
   it('combines manifest version with the current platform asset size', () => {

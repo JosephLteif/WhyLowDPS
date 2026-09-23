@@ -6,7 +6,15 @@ Add new work under the `Unreleased` section. Stable bump and `promote-dev` relea
 
 ## Unreleased
 
-No unreleased changes yet.
+### Bug fixes
+
+#### Refresh desktop and backend dependencies
+
+Updated the desktop framework and updater, keyring integration, and supporting Rust libraries with upstream fixes and stability improvements.
+
+#### Patch frontend security vulnerabilities
+
+Updated Next.js to 16.3.6 and Sharp to 0.35.4, and patched PostCSS and Browserslist. This closes the published critical Next.js server and image-optimization advisories, the Sharp image-processing advisory, and frontend build-tool vulnerabilities involving source maps and custom browser statistics.
 
 ## v6.1.1 — 2026-09-17 — Release notes for v6.1.1
 

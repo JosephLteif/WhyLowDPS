@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ## [Unreleased]
 
+No unreleased changes yet.
+
+## [6.1.2] - 2026-09-23
+
 ### Security
 
 - Updated Next.js to 16.3.6 and Sharp to 0.35.4, and patched PostCSS and Browserslist. This closes the published critical Next.js server and image-optimization advisories, the Sharp image-processing advisory, and frontend build-tool vulnerabilities involving source maps and custom browser statistics.

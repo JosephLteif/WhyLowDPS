@@ -482,6 +482,7 @@ jobs:
           smoke linux/arm64 "${ARM64_IMAGE}" 18001
 
       - name: Publish multi-platform image
+        id: published_image
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -513,15 +514,14 @@ jobs:
         id: digest
         shell: bash
         env:
-          IMAGE: ghcr.io/josephlteif/whylowdps:${{ steps.meta.outputs.version }}
+          IMAGE_DIGEST: ${{ steps.published_image.outputs.digest }}
         run: |
           set -euo pipefail
-          DIGEST="$(docker buildx imagetools inspect "${IMAGE}" | awk '/Digest:/ {print $2; exit}')"
-          if [[ -z "${DIGEST}" ]]; then
-            echo "Unable to determine published image digest"
+          if [[ ! "${IMAGE_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "Published image digest is missing or invalid"
             exit 1
           fi
-          echo "image_digest=${DIGEST}" >> "${GITHUB_OUTPUT}"
+          echo "image_digest=${IMAGE_DIGEST}" >> "${GITHUB_OUTPUT}"
 
   finalize-release:
     if: >-
@@ -550,6 +550,10 @@ jobs:
           IMAGE_DIGEST: ${{ needs.publish-container.outputs.image_digest }}
         run: |
           set -euo pipefail
+          if [[ ! "${IMAGE_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "Published image digest is missing or invalid"
+            exit 1
+          fi
           TAG="${RELEASE_TAG}"
           VERSION="${TAG#v}"
           BUNDLE_DIR="$(mktemp -d)"

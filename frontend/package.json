@@ -29,7 +29,7 @@
     "@zxing/browser": "^0.2.1",
     "jsqr": "^1.4.0",
     "lucide-react": "^1.24.0",
-    "next": "^16.3.1",
+    "next": "^16.3.3",
     "pako": "^3.0.1",
     "qrcode": "^1.5.4",
     "react": "^19.2.5",
@@ -52,7 +52,7 @@
     "autoprefixer": "^10.6.1",
     "cross-env": "^10.1.0",
     "eslint": "^9.0.0",
-    "eslint-config-next": "^16.2.11",
+    "eslint-config-next": "^16.3.3",
     "jsdom": "^30.0.1",
     "npm-check-updates": "^23.0.2",
     "postcss": "^8.5.28",
@@ -64,7 +64,7 @@
   },
   "overrides": {
     "next": {
-      "postcss": "8.5.13"
+      "postcss": "8.5.28"
     }
   }
 }

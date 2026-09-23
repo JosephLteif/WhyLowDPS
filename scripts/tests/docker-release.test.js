@@ -43,6 +43,13 @@ test('release workflow publishes latest and versioned tags and records rollback 
   assert.match(workflow, /whylowdps:latest.*docker-image\.txt/);
   assert.match(workflow, /whylowdps:%s.*docker-image\.txt/);
   assert.match(workflow, /whylowdps@%s.*docker-image\.txt/);
+  assert.match(workflow, /name: Publish multi-platform image\s+id: published_image/);
+  assert.match(
+    workflow,
+    /name: Record published image digest[\s\S]*IMAGE_DIGEST: \$\{\{ steps\.published_image\.outputs\.digest \}\}/
+  );
+  assert.doesNotMatch(workflow, /docker buildx imagetools inspect/);
+  assert.match(workflow, /Published image digest is missing or invalid/);
   assert.match(
     workflow,
     /name: Promote Unreleased changelog[\s\S]*node scripts\/promote-changelog\.js[\s\S]*npm run sync:changelog/

@@ -6,7 +6,12 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ## [Unreleased]
 
-No unreleased changes yet.
+### Fixed
+
+- Quick Sim and Top Gear now disable consumables set to None, overriding defaults imported from
+  SimulationCraft profiles.
+- HTML reports and raw simulation data open within the result page, with a close control for
+  returning to the simulation.
 
 ## [6.1.2] - 2026-09-23
 

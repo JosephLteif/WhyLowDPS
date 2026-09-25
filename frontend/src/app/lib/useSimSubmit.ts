@@ -24,6 +24,8 @@ import { useNotifications } from '../components/shared/NotificationSystem';
 interface UseSimSubmitOptions {
   /** API endpoint path, e.g. "/api/sim" */
   endpoint: string;
+  /** Make the consumable selectors authoritative, including when a category is set to None. */
+  consumablesCustomized?: boolean;
   /**
    * Build per-page payload fields (merged into the shared payload).
    * Return null to abort submission.
@@ -135,7 +137,13 @@ async function emitDesktopTrackedSims(
   }
 }
 
-export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: UseSimSubmitOptions) {
+export function useSimSubmit({
+  endpoint,
+  buildPayload,
+  validate,
+  simAgain,
+  consumablesCustomized = false,
+}: UseSimSubmitOptions) {
   const router = useRouter();
   const { notify } = useNotifications();
   const { lightMode } = useAuth();
@@ -253,6 +261,14 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
       const pagePayload = await buildPayload();
       if (pagePayload === null) return;
       const isConsumableMatrix = pagePayload.sim_type === 'consumable_matrix';
+      const hasConsumableMatrixConfig = [
+        pagePayload.consumable_matrix_flasks,
+        pagePayload.consumable_matrix_foods,
+        pagePayload.consumable_matrix_potions,
+        pagePayload.consumable_matrix_augmentations,
+        pagePayload.consumable_matrix_temporary_enchants,
+      ].some(Array.isArray);
+      const shouldSendSingleConsumables = !isConsumableMatrix && !hasConsumableMatrixConfig;
       let simAgainTarget: { returnUrl: string; pageKey?: string; state?: unknown } | null = null;
       if (typeof window !== 'undefined') {
         const returnUrl = (simAgain?.returnUrl || buildCurrentReturnUrl()).trim();
@@ -315,19 +331,20 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
           raid_buff_battle_shout: raidBuffBattleShout,
           raid_buff_hunters_mark: raidBuffHuntersMark,
           raid_buff_bleeding: raidBuffBleeding,
-          ...(!isConsumableMatrix && consumableFlask.trim()
+          ...(!isConsumableMatrix && consumablesCustomized ? { consumables_customized: true } : {}),
+          ...(shouldSendSingleConsumables && consumableFlask.trim()
             ? { consumable_flask: consumableFlask.trim() }
             : {}),
-          ...(!isConsumableMatrix && consumableFood.trim()
+          ...(shouldSendSingleConsumables && consumableFood.trim()
             ? { consumable_food: consumableFood.trim() }
             : {}),
-          ...(!isConsumableMatrix && consumablePotion.trim()
+          ...(shouldSendSingleConsumables && consumablePotion.trim()
             ? { consumable_potion: consumablePotion.trim() }
             : {}),
-          ...(!isConsumableMatrix && consumableAugmentation.trim()
+          ...(shouldSendSingleConsumables && consumableAugmentation.trim()
             ? { consumable_augmentation: consumableAugmentation.trim() }
             : {}),
-          ...(!isConsumableMatrix && consumableTemporaryEnchant.trim()
+          ...(shouldSendSingleConsumables && consumableTemporaryEnchant.trim()
             ? { consumable_temporary_enchant: consumableTemporaryEnchant.trim() }
             : {}),
           ...(baselineLiveStats ? { baseline_live_stats: baselineLiveStats } : {}),

@@ -425,6 +425,56 @@ export function isNetworkUnavailableError(err: any): boolean {
   return err?.status === 0 || err?.name === 'AbortError' || err?.code === 'NETWORK_UNAVAILABLE';
 }
 
+async function throwForApiError(res: Response): Promise<never> {
+  const responseText = await res.text().catch(() => '');
+  let data: any = {};
+  try {
+    data = responseText ? JSON.parse(responseText) : {};
+  } catch {
+    // Actix's default unauthorized response may be plain text.
+  }
+  const message =
+    data.detail || data.error || responseText.trim() || `Server error ${res.status}`;
+  const isLanPairingRequired = message === 'LAN pairing required';
+  if (res.status === 401 && isLanPairingRequired && typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(LAN_ACCESS_REVOKED_EVENT));
+  }
+  const error = new Error(message) as any;
+  error.status = res.status;
+  error.detail = data.detail;
+  error.error = data.error;
+  if (isLanPairingRequired) error.code = 'LAN_ACCESS_REQUIRED';
+  throw error;
+}
+
+/** Fetch a non-JSON API resource with the same auth and error handling as fetchJson. */
+export async function fetchResource(url: string): Promise<Response> {
+  const headers: Record<string, string> = {};
+  if (sessionToken) headers['Authorization'] = `Bearer ${sessionToken}`;
+  const timedInit = withTimeout(
+    { headers, credentials: 'include' as RequestCredentials },
+    DEFAULT_FETCH_TIMEOUT_MS
+  );
+  const clearTimer = (timedInit as any).__clearTimeout as (() => void) | undefined;
+  delete (timedInit as any).__clearTimeout;
+
+  let response: Response;
+  try {
+    response = await fetch(url, timedInit);
+  } catch (cause) {
+    const error = new Error('Backend not reachable') as any;
+    error.status = 0;
+    error.code = 'NETWORK_UNAVAILABLE';
+    error.cause = cause;
+    throw error;
+  } finally {
+    clearTimer?.();
+  }
+
+  if (!response.ok) await throwForApiError(response);
+  return response;
+}
+
 /** Fetch JSON with consistent error handling. Throws on non-ok responses. */
 export async function fetchJson<T>(url: string, init?: FetchJsonInit): Promise<T> {
   const { timeoutMs = DEFAULT_FETCH_TIMEOUT_MS, ...requestInit } = init || {};
@@ -477,27 +527,7 @@ export async function fetchJson<T>(url: string, init?: FetchJsonInit): Promise<T
     throw error;
   }
 
-  if (!res.ok) {
-    const responseText = await res.text().catch(() => '');
-    let data: any = {};
-    try {
-      data = responseText ? JSON.parse(responseText) : {};
-    } catch {
-      // Actix's default unauthorized response may be plain text.
-    }
-    const message =
-      data.detail || data.error || responseText.trim() || `Server error ${res.status}`;
-    const isLanPairingRequired = message === 'LAN pairing required';
-    if (res.status === 401 && isLanPairingRequired && typeof window !== 'undefined') {
-      window.dispatchEvent(new Event(LAN_ACCESS_REVOKED_EVENT));
-    }
-    const error = new Error(message) as any;
-    error.status = res.status;
-    error.detail = data.detail;
-    error.error = data.error;
-    if (isLanPairingRequired) error.code = 'LAN_ACCESS_REQUIRED';
-    throw error;
-  }
+  if (!res.ok) await throwForApiError(res);
   const text = await res.text();
   if (!text) {
     return undefined as T;

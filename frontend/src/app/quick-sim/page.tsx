@@ -29,6 +29,7 @@ export default function QuickSimPage() {
 
   const { submit, submitting, error, buttonLabel } = useSimSubmit({
     endpoint: '/api/sim',
+    consumablesCustomized: true,
     buildPayload,
     validate,
   });

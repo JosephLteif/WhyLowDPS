@@ -70,12 +70,38 @@ fn sanitize_simc_token(input: &str) -> Option<String> {
     }
 }
 
+fn strip_simc_consumable_options(simc_input: &str) -> String {
+    simc_input
+        .lines()
+        .filter(|line| {
+            let Some((option, _)) = line.split_once('=') else {
+                return true;
+            };
+            ![
+                "flask",
+                "food",
+                "potion",
+                "augmentation",
+                "temporary_enchant",
+            ]
+            .iter()
+            .any(|name| option.trim().eq_ignore_ascii_case(name))
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 pub(super) fn apply_shared_simc_options(
     simc_input: &str,
     options: &SimOptions,
     include_external_buffs: bool,
 ) -> String {
     let mut extra_lines: Vec<String> = Vec::new();
+    let simc_input = if options.consumables_customized {
+        strip_simc_consumable_options(simc_input)
+    } else {
+        simc_input.to_string()
+    };
 
     if include_external_buffs {
         if options.raid_buff_customized {
@@ -170,21 +196,26 @@ pub(super) fn apply_shared_simc_options(
         }
     }
 
-    if let Some(v) = sanitize_simc_token(&options.consumable_flask) {
-        extra_lines.push(format!("flask={}", v));
-    }
-    if let Some(v) = sanitize_simc_token(&options.consumable_food) {
-        extra_lines.push(format!("food={}", v));
-    }
-    if let Some(v) = sanitize_simc_token(&options.consumable_potion) {
-        extra_lines.push(format!("potion={}", v));
-    }
-    if let Some(v) = sanitize_simc_token(&options.consumable_augmentation) {
-        extra_lines.push(format!("augmentation={}", v));
-    }
-    if let Some(v) = sanitize_simc_token(&options.consumable_temporary_enchant) {
-        if !v.starts_with("off_hand:") {
-            extra_lines.push(format!("temporary_enchant={}", v));
+    let consumables = [
+        ("flask", options.consumable_flask.as_str()),
+        ("food", options.consumable_food.as_str()),
+        ("potion", options.consumable_potion.as_str()),
+        ("augmentation", options.consumable_augmentation.as_str()),
+        (
+            "temporary_enchant",
+            options.consumable_temporary_enchant.as_str(),
+        ),
+    ];
+    for (option, value) in consumables {
+        if options.consumables_customized {
+            let token = sanitize_simc_token(value)
+                .filter(|token| option != "temporary_enchant" || !token.starts_with("off_hand:"))
+                .unwrap_or_else(|| "disabled".to_string());
+            extra_lines.push(format!("{}={}", option, token));
+        } else if let Some(token) = sanitize_simc_token(value) {
+            if option != "temporary_enchant" || !token.starts_with("off_hand:") {
+                extra_lines.push(format!("{}={}", option, token));
+            }
         }
     }
 
@@ -841,6 +872,27 @@ mod tests {
             output.find("# Shared Sim Options").expect("shared options")
                 < output.find("### Combo 1").expect("combo marker")
         );
+    }
+
+    #[test]
+    fn apply_shared_simc_options_disables_profile_consumables_when_customized_to_none() {
+        let options = sim_options(json!({ "consumables_customized": true }));
+        let input = "# Default consumables\nflask=old_flask\nfood=old_food\npotion=old_potion\naugmentation=old_rune\ntemporary_enchant=main_hand:old_oil\nmage=tester";
+
+        let output = apply_shared_simc_options(input, &options, false);
+
+        for option in [
+            "flask",
+            "food",
+            "potion",
+            "augmentation",
+            "temporary_enchant",
+        ] {
+            assert!(output.contains(&format!("{}=disabled", option)));
+        }
+        for imported in ["old_flask", "old_food", "old_potion", "old_rune", "old_oil"] {
+            assert!(!output.contains(imported));
+        }
     }
 
     #[test]

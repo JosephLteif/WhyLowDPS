@@ -6,7 +6,17 @@ Add new work under the `Unreleased` section. Stable bump and `promote-dev` relea
 
 ## Unreleased
 
-No unreleased changes yet.
+### Bug fixes
+
+#### Respect empty consumable selections
+
+Quick Sim and Top Gear now explicitly disable consumables you set to None, overriding defaults
+imported from SimulationCraft profiles.
+
+#### Keep simulation reports in the result page
+
+HTML reports and raw simulation data open within the result page, with a close control to return to
+the simulation.
 
 ## v6.1.2 — 2026-09-23 — Release notes for v6.1.2
 

@@ -1,6 +1,23 @@
 {
-  "contentRevision": "v6.1.2-8ca80afe445b",
+  "contentRevision": "Unreleased-57e95eb0367a",
   "releases": [
+    {
+      "version": "Unreleased",
+      "date": "",
+      "title": "Upcoming changes",
+      "entries": [
+        {
+          "category": "fix",
+          "title": "Respect empty consumable selections",
+          "summary": "Quick Sim and Top Gear now explicitly disable consumables you set to None, overriding defaults imported from SimulationCraft profiles."
+        },
+        {
+          "category": "fix",
+          "title": "Keep simulation reports in the result page",
+          "summary": "HTML reports and raw simulation data open within the result page, with a close control to return to the simulation."
+        }
+      ]
+    },
     {
       "version": "v6.1.2",
       "date": "2026-09-23",

@@ -827,12 +827,6 @@ export default function TopGearPage() {
         readStoredMatrixTokens('whylowdps_matrix_temp_enchants'),
         tempEnchants
       );
-      const hasStoredMatrix =
-        storedFlasks.length > 0 ||
-        storedFoods.length > 0 ||
-        storedPotions.length > 0 ||
-        storedAugments.length > 0 ||
-        storedTempEnchants.length > 0;
       return {
         simc_input: buildSubmitInput(),
         selected_items: buildSelectedUidsJson(),
@@ -850,7 +844,7 @@ export default function TopGearPage() {
           : {}),
         catalyst,
         ...(catalystCharges != null ? { catalyst_charges: catalystCharges } : {}),
-        ...(useMatrix && hasStoredMatrix
+        ...(useMatrix
           ? {
               consumable_matrix_flasks: storedFlasks,
               consumable_matrix_foods: storedFoods,
@@ -891,6 +885,7 @@ export default function TopGearPage() {
 
   const { submit, submitting, error, buttonLabel } = useSimSubmit({
     endpoint: '/api/top-gear/sim',
+    consumablesCustomized: true,
     buildPayload,
     validate,
     simAgain: {

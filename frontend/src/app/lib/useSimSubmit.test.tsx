@@ -108,6 +108,34 @@ describe('useSimSubmit light mode', () => {
     expect(urls.some((url) => url.includes('/api/blizzard/'))).toBe(false);
   });
 
+  it('marks empty consumable selections as intentional when the page owns those selectors', async () => {
+    let submittedBody: Record<string, unknown> | undefined;
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/api/sim') {
+        submittedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return Promise.resolve(jsonResponse({ id: 'sim-none' }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { result } = renderHook(() =>
+      useSimSubmit({
+        endpoint: '/api/sim',
+        consumablesCustomized: true,
+        buildPayload: () => ({ sim_type: 'quick', simc_input: 'mage="Alice"' }),
+      })
+    );
+
+    await act(async () => {
+      await result.current.submit();
+    });
+
+    expect(submittedBody?.consumables_customized).toBe(true);
+    expect(submittedBody?.consumable_flask).toBeUndefined();
+    expect(submittedBody?.consumable_food).toBeUndefined();
+  });
+
   it('uses a one-time thread override without changing the saved default', async () => {
     let submittedBody: Record<string, unknown> | undefined;
     const fetchMock = vi.fn((url: string, init?: RequestInit) => {

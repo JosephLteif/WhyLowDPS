@@ -110,6 +110,8 @@ pub struct SimOptions {
     #[serde(default)]
     pub raid_buff_bleeding: bool,
     #[serde(default)]
+    pub consumables_customized: bool,
+    #[serde(default)]
     pub consumable_flask: String,
     #[serde(default)]
     pub consumable_food: String,
@@ -176,6 +178,7 @@ impl SimOptions {
             "raid_buff_battle_shout": self.raid_buff_battle_shout,
             "raid_buff_hunters_mark": self.raid_buff_hunters_mark,
             "raid_buff_bleeding": self.raid_buff_bleeding,
+            "consumables_customized": self.consumables_customized,
             "consumable_flask": self.consumable_flask,
             "consumable_food": self.consumable_food,
             "consumable_potion": self.consumable_potion,

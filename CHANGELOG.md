@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ## [Unreleased]
 
+No unreleased changes yet.
+
+## [6.1.3] - 2026-09-25
+
 ### Fixed
 
 - Quick Sim and Top Gear now disable consumables set to None, overriding defaults imported from

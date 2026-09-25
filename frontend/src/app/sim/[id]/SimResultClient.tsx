@@ -1,8 +1,16 @@
 'use client';
 
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, CircleAlert, Download } from 'lucide-react';
+import {
+  type MouseEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { ChevronDown, CircleAlert, Download, X } from 'lucide-react';
 import DpsHeroCard from '../../components/DpsHeroCard';
 import type { GearItem } from '../../components/GearOverview';
 import GearOverview from '../../components/GearOverview';
@@ -36,7 +44,7 @@ import { parseCharacterInfo, parseSimcBuffs, SimcBuff } from '@/lib/simc-parser'
 import { useWowheadTooltips } from '../../lib/useWowheadTooltips';
 import { useNotifications } from '../../components/shared/NotificationSystem';
 
-import { API_URL, fetchJson } from '../../lib/api';
+import { API_URL, fetchJson, fetchResource } from '../../lib/api';
 import {
   formatScenarioLabel,
   getScenarioSiblings,
@@ -478,6 +486,7 @@ export default function SimResultClient({ initialJob, shared = false }: SimResul
   const [activeScenarioId, setActiveScenarioId] = useState(initialJob?.id || id);
 
   const [job, setJob] = useState<JobData | null>(initialJob || null);
+  const [openedResource, setOpenedResource] = useState<{ url: string; title: string } | null>(null);
   const jobRef = useRef<JobData | null>(initialJob || null);
   const [fetchError, setFetchError] = useState('');
   const [statusRetryNonce, setStatusRetryNonce] = useState(0);
@@ -495,6 +504,20 @@ export default function SimResultClient({ initialJob, shared = false }: SimResul
   const [rerunError, setRerunError] = useState('');
   const [rerunning, setRerunning] = useState(false);
   const previousStatusRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!openedResource) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpenedResource(null);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      URL.revokeObjectURL(openedResource.url);
+    };
+  }, [openedResource]);
 
   const retryStatus = useCallback(() => {
     setFetchError('');
@@ -514,6 +537,52 @@ export default function SimResultClient({ initialJob, shared = false }: SimResul
   }, [activeScenarioId]);
 
   const r = job?.result as any;
+  const resultResourceId = activeScenarioId || job?.id || id;
+  const handleResourceLinkClick = useCallback(
+    async (
+      event: MouseEvent<HTMLButtonElement>,
+      resourcePath: string,
+      shouldDownload = false
+    ) => {
+      event.preventDefault();
+
+      try {
+        const url = `${API_URL}/api/sim/${encodeURIComponent(resultResourceId)}/${resourcePath}`;
+        const response = await fetchResource(url);
+        const objectUrl = URL.createObjectURL(await response.blob());
+        if (shouldDownload) {
+          const filename = response.headers
+            .get('Content-Disposition')
+            ?.match(/filename="?([^";]+)"?/i)?.[1];
+          const downloadLink = document.createElement('a');
+          downloadLink.href = objectUrl;
+          downloadLink.download = filename || `sim-${resultResourceId}.csv`;
+          document.body.appendChild(downloadLink);
+          downloadLink.click();
+          downloadLink.remove();
+        } else {
+          const title =
+            resourcePath === 'raw'
+              ? 'Raw JSON'
+              : resourcePath === 'input'
+                ? 'Raw Input'
+                : resourcePath === 'html'
+                  ? 'HTML Report'
+                  : 'Text Output';
+          setOpenedResource({ url: objectUrl, title });
+        }
+        if (shouldDownload) window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      } catch (error) {
+        notify({
+          title: 'Could not open simulation data',
+          description: error instanceof Error ? error.message : 'Please try again.',
+          variant: 'error',
+          durationMs: 7000,
+        });
+      }
+    },
+    [notify, resultResourceId]
+  );
   const timelineFallbackData = timelineFallback;
   const aplFallbackData = aplFallback;
   const timelineData = (r?.timeline as Record<string, unknown> | undefined) || timelineFallbackData;
@@ -1763,51 +1832,76 @@ export default function SimResultClient({ initialJob, shared = false }: SimResul
           <span>All displayed result data is included in the shared file.</span>
         ) : (
           <>
-            <a
-              href={`${API_URL}/api/sim/${id}/raw`}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              type="button"
+              onClick={(event) => void handleResourceLinkClick(event, 'raw')}
               className="transition-colors hover:text-white"
             >
               Raw JSON
-            </a>
+            </button>
             <span className="bg-border h-3 w-px" />
-            <a
-              href={`${API_URL}/api/sim/${id}/input`}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              type="button"
+              onClick={(event) => void handleResourceLinkClick(event, 'input')}
               className="transition-colors hover:text-white"
             >
               Raw Input
-            </a>
+            </button>
             <span className="bg-border h-3 w-px" />
-            <a
-              href={`${API_URL}/api/sim/${id}/data.csv`}
+            <button
+              type="button"
+              onClick={(event) => void handleResourceLinkClick(event, 'data.csv', true)}
               className="transition-colors hover:text-white"
             >
               CSV
-            </a>
+            </button>
             <span className="bg-border h-3 w-px" />
-            <a
-              href={`${API_URL}/api/sim/${id}/html`}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              type="button"
+              onClick={(event) => void handleResourceLinkClick(event, 'html')}
               className="transition-colors hover:text-white"
             >
               HTML Report
-            </a>
+            </button>
             <span className="bg-border h-3 w-px" />
-            <a
-              href={`${API_URL}/api/sim/${id}/output.txt`}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              type="button"
+              onClick={(event) => void handleResourceLinkClick(event, 'output.txt')}
               className="transition-colors hover:text-white"
             >
               Text Output
-            </a>
+            </button>
           </>
         )}
       </div>
+      {openedResource && (
+        <div
+          className="fixed inset-0 z-[100] flex flex-col bg-zinc-950"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="sim-resource-title"
+        >
+          <header className="flex h-12 shrink-0 items-center justify-between border-b border-white/10 px-4 text-white">
+            <h2 id="sim-resource-title" className="text-sm font-semibold">
+              {openedResource.title}
+            </h2>
+            <button
+              type="button"
+              onClick={() => setOpenedResource(null)}
+              aria-label="Close viewer"
+              className="inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+            >
+              <X size={16} aria-hidden="true" />
+              Close
+            </button>
+          </header>
+          <iframe
+            className="min-h-0 w-full flex-1 border-0 bg-white"
+            src={openedResource.url}
+            title={openedResource.title}
+          />
+        </div>
+      )}
     </div>
   );
 }

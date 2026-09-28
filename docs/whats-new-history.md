@@ -6,7 +6,12 @@ Add new work under the `Unreleased` section. Stable bump and `promote-dev` relea
 
 ## Unreleased
 
-No unreleased changes yet.
+### Bug fixes
+
+#### Recover dashboard preferences with duplicate IDs
+
+Saved dashboard layouts now ignore duplicate widget and stat card IDs, preventing repeated panels
+when browser storage contains duplicate entries.
 
 ## v6.1.3 — 2026-09-25 — Release notes for v6.1.3
 

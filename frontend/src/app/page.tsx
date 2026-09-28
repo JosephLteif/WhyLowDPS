@@ -346,26 +346,6 @@ function DashboardWidgetShell({
   );
 }
 
-function ActiveIcon() {
-  return <Activity className="h-5 w-5" strokeWidth={2} />;
-}
-
-function QueueIcon() {
-  return <Clock3 className="h-5 w-5" strokeWidth={2} />;
-}
-
-function ListIcon() {
-  return <List className="h-5 w-5" strokeWidth={2} />;
-}
-
-function DatabaseIcon() {
-  return <Database className="h-5 w-5" strokeWidth={2} />;
-}
-
-function CpuIcon() {
-  return <Cpu className="h-5 w-5" strokeWidth={2} />;
-}
-
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
   if (bytes < 1024) return `${bytes} B`;
@@ -631,7 +611,9 @@ export default function Home() {
       const parsed = JSON.parse(raw);
       if (!Array.isArray(parsed)) return;
       const validIds = new Set(DEFAULT_DASHBOARD_WIDGETS);
-      const next = parsed.filter((id): id is DashboardWidgetId => validIds.has(id));
+      const next = [
+        ...new Set(parsed.filter((id): id is DashboardWidgetId => validIds.has(id))),
+      ];
       setDashboardWidgets(next.length > 0 ? next : DEFAULT_DASHBOARD_WIDGETS);
     } catch {
       setDashboardWidgets(DEFAULT_DASHBOARD_WIDGETS);
@@ -663,7 +645,7 @@ export default function Home() {
       const parsed = JSON.parse(raw);
       if (!Array.isArray(parsed)) return;
       const valid = new Set<StatCardId>(STAT_CARD_ORDER);
-      const saved = parsed.filter((id): id is StatCardId => valid.has(id));
+      const saved = [...new Set(parsed.filter((id): id is StatCardId => valid.has(id)))];
       const version = localStorage.getItem(LOCAL_DASHBOARD_STATS_WIDGET_VERSION_KEY);
       const next: StatCardId[] =
         version === DASHBOARD_STATS_CARD_VERSION
@@ -1628,20 +1610,28 @@ export default function Home() {
                   {visibleStatCards.map((id) => {
                     const metric =
                       id === 'active'
-                        ? { label: 'Active Sims', value: String(activeSims), icon: <ActiveIcon /> }
+                        ? {
+                            label: 'Active Sims',
+                            value: String(activeSims),
+                            icon: <Activity className="h-5 w-5" strokeWidth={2} />,
+                          }
                         : id === 'queued'
-                          ? { label: 'Queued Sims', value: String(queuedSims), icon: <QueueIcon /> }
+                          ? {
+                              label: 'Queued Sims',
+                              value: String(queuedSims),
+                              icon: <Clock3 className="h-5 w-5" strokeWidth={2} />,
+                            }
                           : id === 'total'
                             ? {
                                 label: 'Total Sims',
                                 value: String(historyStats?.count ?? 0),
-                                icon: <ListIcon />,
+                                icon: <List className="h-5 w-5" strokeWidth={2} />,
                               }
                             : id === 'history'
                               ? {
                                   label: 'History Size',
                                   value: formatBytes(historyStats?.size_bytes ?? 0),
-                                  icon: <DatabaseIcon />,
+                                  icon: <Database className="h-5 w-5" strokeWidth={2} />,
                                 }
                               : {
                                   label: 'System Load',
@@ -1650,7 +1640,7 @@ export default function Home() {
                                       ? `${Math.round(cpuUsage)}%`
                                       : 'N/A'
                                     : 'N/A',
-                                  icon: <CpuIcon />,
+                                  icon: <Cpu className="h-5 w-5" strokeWidth={2} />,
                                 };
                     const card = (
                       <div

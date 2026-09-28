@@ -1,6 +1,18 @@
 {
-  "contentRevision": "v6.1.3-290ec655d08a",
+  "contentRevision": "Unreleased-cd5d062e7584",
   "releases": [
+    {
+      "version": "Unreleased",
+      "date": "",
+      "title": "Upcoming changes",
+      "entries": [
+        {
+          "category": "fix",
+          "title": "Recover dashboard preferences with duplicate IDs",
+          "summary": "Saved dashboard layouts now ignore duplicate widget and stat card IDs, preventing repeated panels when browser storage contains duplicate entries."
+        }
+      ]
+    },
     {
       "version": "v6.1.3",
       "date": "2026-09-25",

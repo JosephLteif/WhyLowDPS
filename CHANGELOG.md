@@ -6,7 +6,10 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ## [Unreleased]
 
-No unreleased changes yet.
+### Fixed
+
+- Saved dashboard layouts now ignore duplicate widget and stat card IDs, preventing repeated panels
+  when browser storage contains duplicate entries.
 
 ## [6.1.3] - 2026-09-25
 

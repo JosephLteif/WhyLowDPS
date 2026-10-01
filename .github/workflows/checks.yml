@@ -176,17 +176,24 @@ jobs:
       - name: Run desktop tests
         run: cargo test --manifest-path desktop/src-tauri/Cargo.toml app_logic::tests
 
-  container_build_check:
+  container_build_check_arch:
     if: (github.event_name == 'pull_request' || github.event_name == 'push') && needs.changes.outputs.container == 'true' && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):'))
     needs: changes
-    name: Container Build Check
-    runs-on: ubuntu-latest
+    name: Container Build Check (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+            platform: linux/amd64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            platform: linux/arm64
+    runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-
-      - name: Set up QEMU for ARM64 container builds
-        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -207,9 +214,22 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ matrix.platform }}
           push: false
-          tags: whylowdps-pr-check:latest
+          tags: whylowdps-pr-check:${{ matrix.arch }}
+          cache-from: type=gha,scope=container-pr-${{ matrix.arch }}
+          cache-to: type=gha,scope=container-pr-${{ matrix.arch }},mode=max,ignore-error=true
+
+  container_build_check:
+    if: always() && needs.container_build_check_arch.result != 'skipped'
+    needs: container_build_check_arch
+    name: Container Build Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify architecture builds
+        env:
+          BUILD_RESULT: ${{ needs.container_build_check_arch.result }}
+        run: test "$BUILD_RESULT" = success
 
   lifecycle_checks:
     if: always()

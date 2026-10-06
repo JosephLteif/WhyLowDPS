@@ -33,6 +33,7 @@ pub fn build_slot_candidates(
         let mut selected_core_keys: HashSet<String> = selected_uids
             .iter()
             .filter(|uid| !exact_selection_uids.contains(*uid))
+            .filter(|uid| !uid_has_redirected_base_stats(uid))
             .filter_map(|uid| uid_core_key(uid))
             .collect();
         if let Some(paired) = class_data::paired_slot(&slot_str) {
@@ -48,10 +49,16 @@ pub fn build_slot_candidates(
                         p_uids
                             .iter()
                             .filter(|uid| !paired_exact_selection_uids.contains(*uid))
+                            .filter(|uid| !uid_has_redirected_base_stats(uid))
                             .filter_map(|uid| uid_core_key(uid)),
                     );
                 } else {
-                    selected_core_keys.extend(p_uids.iter().filter_map(|uid| uid_core_key(uid)));
+                    selected_core_keys.extend(
+                        p_uids
+                            .iter()
+                            .filter(|uid| !uid_has_redirected_base_stats(uid))
+                            .filter_map(|uid| uid_core_key(uid)),
+                    );
                 }
             }
         }
@@ -71,7 +78,8 @@ pub fn build_slot_candidates(
             }
             if selected_uids.contains(uid)
                 || selected_identities.contains(&identity)
-                || selected_core_keys.contains(&core_key)
+                || (selected_core_keys.contains(&core_key)
+                    && !item.simc_string.contains(",redirected_base_stats="))
             {
                 candidates.push(item.clone());
             }
@@ -670,6 +678,13 @@ pub fn uid_identity(uid: &str) -> String {
     uid.rsplit_once(':')
         .map(|(prefix, _)| prefix.to_string())
         .unwrap_or_else(|| uid.to_string())
+}
+
+fn uid_has_redirected_base_stats(uid: &str) -> bool {
+    uid.split(':').any(|part| {
+        part.strip_prefix('r')
+            .is_some_and(|id| !id.is_empty() && id.chars().all(|ch| ch.is_ascii_digit()))
+    })
 }
 
 fn uid_core_key(uid: &str) -> Option<String> {

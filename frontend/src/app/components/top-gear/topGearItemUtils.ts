@@ -272,6 +272,7 @@ export function makeUid(item: {
   crafted_stats?: string[];
   embellishment_item_id?: number;
   modifier_item_ids?: number[];
+  simc_string?: string;
 }): string {
   return buildGearItemUid(item);
 }
@@ -287,6 +288,7 @@ export function makeIdentity(item: {
   crafted_stats?: string[];
   embellishment_item_id?: number;
   modifier_item_ids?: number[];
+  simc_string?: string;
 }): string {
   return buildGearItemIdentity(item);
 }

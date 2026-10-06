@@ -281,6 +281,7 @@ function buildVariantRuleBaseKey(item: ResolvedItem): string {
     gem_ids: [],
     crafted_stats: item.crafted_stats,
     embellishment_item_id: item.embellishment_item_id,
+    simc_string: item.simc_string,
   });
 }
 

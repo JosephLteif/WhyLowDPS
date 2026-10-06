@@ -1,5 +1,5 @@
 {
-  "contentRevision": "Unreleased-ee12131a7e2f",
+  "contentRevision": "Unreleased-5fb67320cbbc",
   "releases": [
     {
       "version": "Unreleased",
@@ -10,6 +10,18 @@
           "category": "improvement",
           "title": "Follow simulation progress in real time",
           "summary": "Simulation status now shows live estimates, recent performance history, early combo results, and logs as a run progresses. The sticky progress header keeps stage history and the Pause/Resume, Cancel, log visibility, and CPU core controls at the top."
+        }
+      ]
+    },
+    {
+      "version": "v6.2.0",
+      "date": "2026-10-06",
+      "title": "Release notes for v6.2.0",
+      "entries": [
+        {
+          "category": "fix",
+          "title": "Keep source stats when catalyzing class set gear",
+          "summary": "Top Gear catalyst conversions for class set pieces now use the source item's secondary stats, and each conversion remains distinct from the set item's default stats."
         },
         {
           "category": "fix",

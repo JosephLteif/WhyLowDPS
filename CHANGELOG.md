@@ -12,8 +12,11 @@ The format is based on Keep a Changelog and this project uses semantic versionin
   logs as a run progresses. The sticky progress header keeps stage history and the Pause/Resume,
   Cancel, log visibility, and CPU core controls at the top.
 
+## [6.2.0] - 2026-10-06
+
 ### Fixed
 
+- Top Gear catalyst conversions for class set pieces now inherit the source item's secondary stats.
 - Saved dashboard layouts now ignore duplicate widget and stat card IDs, preventing repeated panels
   when browser storage contains duplicate entries.
 

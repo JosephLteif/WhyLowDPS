@@ -1,11 +1,16 @@
 {
-  "contentRevision": "v6.2.0-b38c8ae643d0",
+  "contentRevision": "v6.2.0-b3e75b0af683",
   "releases": [
     {
       "version": "v6.2.0",
       "date": "2026-10-06",
       "title": "Release notes for v6.2.0",
       "entries": [
+        {
+          "category": "improvement",
+          "title": "Follow simulation progress in real time",
+          "summary": "Simulation status now shows live estimates, recent performance history, early combo results, and logs as a run progresses. The sticky progress header keeps stage history and the Pause/Resume, Cancel, log visibility, and CPU core controls at the top."
+        },
         {
           "category": "fix",
           "title": "Keep source stats when catalyzing class set gear",

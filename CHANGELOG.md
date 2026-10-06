@@ -10,6 +10,12 @@ No unreleased changes yet.
 
 ## [6.2.0] - 2026-10-06
 
+### Changed
+
+- Simulation status now shows live estimates, recent performance history, early combo results, and
+  logs as a run progresses. The sticky progress header keeps stage history and the Pause/Resume,
+  Cancel, log visibility, and CPU core controls at the top.
+
 ### Fixed
 
 - Top Gear catalyst conversions for class set pieces now inherit the source item's secondary stats.

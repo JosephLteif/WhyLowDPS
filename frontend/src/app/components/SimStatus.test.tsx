@@ -1,6 +1,10 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { extractLatestPhaseRemainingSeconds, parseLatestPhaseLog } from './SimStatus';
+import {
+  extractLatestPhaseRemainingSeconds,
+  parseLatestPhaseLog,
+  parseLiveSimulationLogs,
+} from './SimStatus';
 import SimStatus from './SimStatus';
 
 vi.mock('../lib/api', async () => {
@@ -36,7 +40,8 @@ describe('extractLatestPhaseRemainingSeconds', () => {
       profilesetTotal: 32,
       simulationCompleted: 6151,
       simulationTotal: 11857,
-      simulationPercent: 94.868,
+      simulationPercent: (6151 / 11857) * 100,
+      iterationsPerSecond: 94.868,
       mean: 102226,
       errorPercent: -0.07,
       remainingSeconds: 99,
@@ -51,6 +56,165 @@ describe('extractLatestPhaseRemainingSeconds', () => {
       ])
     ).toBe(65);
     expect(extractLatestPhaseRemainingSeconds(['Simulating... 50% (12s)'])).toBeNull();
+  });
+});
+
+describe('live simulation telemetry', () => {
+  const baseline =
+    'Generating Baseline: 1/1 [====================] 1000/1000 95.3 Mean=211691 Error=0.050% 2sec';
+  const finished =
+    'Generating Profileset: Combo 2 | 3p 1/13 1000/1000 Mean=211733 Error=-0.050% 877msec (22s)';
+  const current =
+    'Generating Profileset: Combo 5 | 3p 4/13 [====>.....] 700/1000 94.868 Mean=211850 Error=0.057% 6sec (20s)';
+
+  it('parses native baseline output and completed parallel profilesets without a throughput field', () => {
+    expect(parseLatestPhaseLog([baseline])).toMatchObject({
+      phase: 'Baseline',
+      name: 'Baseline',
+      mean: 211691,
+      simulationPercent: 100,
+    });
+    expect(parseLatestPhaseLog([finished])).toMatchObject({
+      name: 'Combo 2',
+      mean: 211733,
+      simulationPercent: 100,
+      errorPercent: -0.05,
+    });
+    expect(parseLatestPhaseLog([current])?.simulationPercent).toBe(70);
+    expect(parseLatestPhaseLog([baseline])?.profilesetTotal).toBeUndefined();
+    expect(
+      parseLatestPhaseLog(['Generating Baseline: 1/1 1000/1000 877msec'])?.iterationsPerSecond
+    ).toBeUndefined();
+  });
+
+  it('only ranks completed estimates, deduplicates notes, and collects the current phase samples', () => {
+    const warning = 'Implementation Not Yet Verified: Rune of Unleashed Fire';
+    const data = parseLiveSimulationLogs([
+      'Simulating... (target_error=0.050)',
+      baseline,
+      finished,
+      finished,
+      warning,
+      warning,
+      current.replace('Mean=211850', 'Mean=211800'),
+      current,
+    ]);
+    expect(data.completed.map((phase) => phase.name)).toEqual(['Combo 2', 'Baseline']);
+    expect(data.samples).toEqual([211800, 211850]);
+    expect(data.notes).toEqual([{ text: 'Rune of Unleashed Fire', count: 2 }]);
+    expect(data.targetError).toBe(0.05);
+  });
+
+  it('resets comparisons at a new staged run and handles output without mean or error', () => {
+    const data = parseLiveSimulationLogs([
+      baseline,
+      finished,
+      'Simulating... (iterations=10000)',
+      'Generating Baseline: 1/1 [==>.......] 300/1000 90.0 6sec (10s)',
+    ]);
+    expect(data.completed).toEqual([]);
+    expect(data.samples).toEqual([]);
+    expect(data.latest).toMatchObject({ simulationCompleted: 300, simulationPercent: 30 });
+    expect(data.latest?.mean).toBeUndefined();
+    expect(data.targetError).toBeUndefined();
+  });
+
+  it('keeps telemetry visible with logs collapsed and labels the chart and provisional results', () => {
+    render(
+      <SimStatus
+        status="running"
+        progress={40}
+        logLines={[baseline, finished, current.replace('Mean=211850', 'Mean=211800'), current]}
+        showLogs={false}
+      />
+    );
+    expect(screen.getByText('Live estimate')).toBeInTheDocument();
+    expect(screen.getByText('+159 vs baseline')).toBeInTheDocument();
+    expect(
+      screen.getByRole('img', { name: 'Live estimate over the last 2 updates' })
+    ).toBeInTheDocument();
+    expect(screen.getByRole('table')).toHaveTextContent('Combo 2');
+    expect(screen.queryByText('SimC Output')).not.toBeInTheDocument();
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '40');
+  });
+
+  it('filters repeated progress and notes in key output and can reveal everything', () => {
+    const warning = 'Implementation Not Yet Verified: Rune of Unleashed Fire';
+    const earlier = current.replace('Mean=211850', 'Mean=211800');
+    render(
+      <SimStatus
+        status="running"
+        progress={40}
+        logLines={[earlier, current, warning, warning]}
+        showLogs
+      />
+    );
+    expect(screen.queryByText(earlier)).not.toBeInTheDocument();
+    expect(screen.getAllByText(warning)).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Everything' }));
+    expect(screen.getByText(earlier)).toBeInTheDocument();
+    expect(screen.getAllByText(warning)).toHaveLength(2);
+  });
+
+  it('does not show stale live data while a simulation is queued', () => {
+    render(<SimStatus status="pending" progress={0} logLines={[baseline, finished, current]} />);
+    expect(screen.queryByText('Live estimate')).not.toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+  });
+
+  it('keeps stage history and simulation controls in the sticky progress bar', () => {
+    render(
+      <SimStatus
+        status="running"
+        progress={90}
+        progressStage="Stage 3 of 3"
+        progressDetail="High"
+        stagesCompleted={['Low', 'Medium']}
+        stageTimings={[
+          { name: 'Low', elapsed: 35 },
+          { name: 'Medium', elapsed: 80 },
+        ]}
+        jobId="sticky-stage-job"
+        cpuCores={10}
+        maxCpuCores={10}
+        coresAvailable
+      />
+    );
+
+    const bar = screen.getByRole('list', { name: 'Simulation stages' }).closest('.sticky');
+    expect(bar).toBeInTheDocument();
+    expect(bar).toHaveClass('sticky');
+    expect(bar).toContainElement(screen.getByText('Low'));
+    expect(bar).toContainElement(screen.getByText('Medium'));
+    expect(bar).toContainElement(screen.getByText('High'));
+    expect(screen.getByRole('listitem', { current: 'step' })).toHaveTextContent('Stage 3 of 3');
+    expect(bar).toContainElement(screen.getByRole('button', { name: 'Pause Sim' }));
+    expect(bar).toContainElement(screen.getByRole('button', { name: 'Cancel Sim' }));
+    expect(bar).toContainElement(
+      screen.getByRole('combobox', { name: 'CPU cores used by this simulation' })
+    );
+  });
+
+  it('updates estimates when new output arrives and resets the chart for a different profileset', () => {
+    const { rerender } = render(
+      <SimStatus status="running" progress={40} logLines={[baseline, current]} />
+    );
+    const next = current.replace('Mean=211850', 'Mean=212000');
+    rerender(<SimStatus status="running" progress={41} logLines={[baseline, current, next]} />);
+    expect(screen.getByText('+309 vs baseline')).toBeInTheDocument();
+    expect(
+      screen.getByRole('img', { name: 'Live estimate over the last 2 updates' })
+    ).toBeInTheDocument();
+    rerender(
+      <SimStatus
+        status="running"
+        progress={42}
+        logLines={[baseline, current, next, next.replace('Combo 5', 'Combo 6')]}
+      />
+    );
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    expect(screen.getByText('Collecting live estimate samples…')).toBeInTheDocument();
   });
 });
 

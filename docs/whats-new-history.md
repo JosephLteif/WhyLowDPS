@@ -6,6 +6,10 @@ Add new work under the `Unreleased` section. Stable bump and `promote-dev` relea
 
 ## Unreleased
 
+No unreleased changes yet.
+
+## v6.2.0 — 2026-10-06 — Release notes for v6.2.0
+
 ### Improvements
 
 #### Follow simulation progress in real time
@@ -13,8 +17,6 @@ Add new work under the `Unreleased` section. Stable bump and `promote-dev` relea
 Simulation status now shows live estimates, recent performance history, early combo results, and
 logs as a run progresses. The sticky progress header keeps stage history and the Pause/Resume,
 Cancel, log visibility, and CPU core controls at the top.
-
-## v6.2.0 — 2026-10-06 — Release notes for v6.2.0
 
 ### Bug fixes
 

@@ -365,21 +365,25 @@ export default function TopGearItemSelector({
         const catalystItem: ResolvedItem = await res.json();
         const nextResolved = { ...resolved, slots: { ...resolved.slots } };
         const slotRes = nextResolved.slots[item.slot];
-        if (slotRes) {
+        const existingCatalyst = slotRes?.alternatives.find(
+          (alternative) => alternative.uid === catalystItem.uid
+        );
+        if (slotRes && !existingCatalyst) {
           slotRes.alternatives = [...slotRes.alternatives, catalystItem];
+          onResolvedChange(nextResolved);
         }
-        onResolvedChange(nextResolved);
+        const itemToAdd = existingCatalyst ?? catalystItem;
         const nextSelected = {
           ...Object.fromEntries(Object.entries(selectedUids).map(([k, v]) => [k, new Set(v)])),
         };
         if (!nextSelected[item.slot]) nextSelected[item.slot] = new Set();
-        nextSelected[item.slot].add(catalystItem.uid);
+        nextSelected[item.slot].add(itemToAdd.uid);
         onSelectionChange(nextSelected);
         rememberLimitWarningCandidate(
-          catalystItem.uid,
-          itemHasEmbellishment(catalystItem, embellishmentOptionsByItem)
+          itemToAdd.uid,
+          itemHasEmbellishment(itemToAdd, embellishmentOptionsByItem)
         );
-        onItemAdded(item.slot, catalystItem.simc_string, catalystItem.origin);
+        onItemAdded(item.slot, itemToAdd.simc_string, itemToAdd.origin);
       } catch {}
     },
     [
@@ -419,6 +423,7 @@ export default function TopGearItemSelector({
             gem_ids: nextItem.gem_ids,
             crafted_stats: nextItem.crafted_stats,
             embellishment_item_id: nextItem.embellishment_item_id,
+            simc_string: nextItem.simc_string,
           });
           if (nextUid !== alt.uid) {
             uidMap.set(alt.uid, nextUid);
@@ -591,6 +596,7 @@ export default function TopGearItemSelector({
           gem_ids: item.gem_ids,
           crafted_stats: item.crafted_stats,
           embellishment_item_id: item.embellishment_item_id,
+          simc_string: newSimcString,
         });
         const slotRes = nextResolved.slots[slot];
         if (!slotRes || slotRes.alternatives.some((a) => a.uid === uid)) continue;
@@ -627,6 +633,7 @@ export default function TopGearItemSelector({
           gem_ids: item.gem_ids,
           crafted_stats: item.crafted_stats,
           embellishment_item_id: item.embellishment_item_id,
+          simc_string: newSimcString,
         });
         if (!nextSelected[slot]) nextSelected[slot] = new Set();
         nextSelected[slot].add(uid);
@@ -687,6 +694,7 @@ export default function TopGearItemSelector({
           gem_ids: item.gem_ids,
           crafted_stats: item.crafted_stats,
           embellishment_item_id: item.embellishment_item_id,
+          simc_string: newSimcString,
         });
         const slotRes = nextResolved.slots[slot];
         if (!slotRes || slotRes.alternatives.some((a) => a.uid === uid)) continue;
@@ -723,6 +731,7 @@ export default function TopGearItemSelector({
           gem_ids: item.gem_ids,
           crafted_stats: item.crafted_stats,
           embellishment_item_id: item.embellishment_item_id,
+          simc_string: newSimcString,
         });
         if (!nextSelected[slot]) nextSelected[slot] = new Set();
         nextSelected[slot].add(uid);
@@ -836,6 +845,7 @@ export default function TopGearItemSelector({
         gem_ids: normalizedGemIds,
         crafted_stats: item.crafted_stats,
         embellishment_item_id: embellishment?.item_id,
+        simc_string: nextSimc,
       });
       const uid = bundleId ? `${baseUid}:ga${bundleId}` : baseUid;
       const copy: ResolvedItem = {
@@ -2231,6 +2241,7 @@ export default function TopGearItemSelector({
             gem_ids: nextItem.gem_ids,
             crafted_stats: nextItem.crafted_stats,
             embellishment_item_id: nextItem.embellishment_item_id,
+            simc_string: nextItem.simc_string,
           });
           const nextVariant: ResolvedItem = { ...nextItem, uid: nextUid };
           const nextResolved = { ...resolved, slots: { ...resolved.slots } };

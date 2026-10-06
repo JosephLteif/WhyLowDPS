@@ -8,6 +8,7 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ### Fixed
 
+- Top Gear catalyst conversions for class set pieces now inherit the source item's secondary stats.
 - Saved dashboard layouts now ignore duplicate widget and stat card IDs, preventing repeated panels
   when browser storage contains duplicate entries.
 

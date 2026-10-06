@@ -1,6 +1,6 @@
 {
   "productName": "WhyLowDps",
-  "version": "6.1.3",
+  "version": "6.2.0",
   "identifier": "com.whylowdps",
   "build": {
     "frontendDist": "../../frontend/out",

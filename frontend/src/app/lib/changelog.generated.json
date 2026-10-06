@@ -1,10 +1,10 @@
 {
-  "contentRevision": "Unreleased-9984290719e9",
+  "contentRevision": "v6.2.0-b38c8ae643d0",
   "releases": [
     {
-      "version": "Unreleased",
-      "date": "",
-      "title": "Upcoming changes",
+      "version": "v6.2.0",
+      "date": "2026-10-06",
+      "title": "Release notes for v6.2.0",
       "entries": [
         {
           "category": "fix",

@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ## [Unreleased]
 
+No unreleased changes yet.
+
+## [6.2.0] - 2026-10-06
+
 ### Fixed
 
 - Top Gear catalyst conversions for class set pieces now inherit the source item's secondary stats.

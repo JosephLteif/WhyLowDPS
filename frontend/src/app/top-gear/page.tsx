@@ -80,8 +80,14 @@ function itemCoreKey(item: Pick<ResolvedItem, 'item_id' | 'origin'>): string {
 }
 
 function uidMatchesItem(uid: string, item: ResolvedItem): boolean {
+  const uidHasRedirectedBaseStats = /:r\d+(?=:|$)/.test(uid);
+  const itemInheritsBaseStats = /(?:^|,)redirected_base_stats=\d+(?:,|$)/.test(item.simc_string);
+  if (uid === item.uid) return true;
+  // Broad item ID matching would reselect both the inherited-stats and base tier variants.
+  if (uidHasRedirectedBaseStats || itemInheritsBaseStats) {
+    return uidIdentity(uid) === uidIdentity(item.uid);
+  }
   return (
-    uid === item.uid ||
     uidIdentity(uid) === uidIdentity(item.uid) ||
     uidCoreKey(uid) === itemCoreKey(item)
   );
@@ -98,6 +104,7 @@ function buildVariantRuleBaseKey(item: ResolvedItem): string {
     gem_ids: [],
     crafted_stats: item.crafted_stats,
     embellishment_item_id: item.embellishment_item_id,
+    simc_string: item.simc_string,
   });
 }
 

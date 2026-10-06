@@ -8,6 +8,11 @@ Add new work under the `Unreleased` section. Stable bump and `promote-dev` relea
 
 ### Bug fixes
 
+#### Keep source stats when catalyzing class set gear
+
+Top Gear catalyst conversions for class set pieces now use the source item's secondary stats, and
+each conversion remains distinct from the set item's default stats.
+
 #### Recover dashboard preferences with duplicate IDs
 
 Saved dashboard layouts now ignore duplicate widget and stat card IDs, preventing repeated panels

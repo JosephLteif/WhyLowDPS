@@ -1,11 +1,16 @@
 {
-  "contentRevision": "Unreleased-cd5d062e7584",
+  "contentRevision": "Unreleased-9984290719e9",
   "releases": [
     {
       "version": "Unreleased",
       "date": "",
       "title": "Upcoming changes",
       "entries": [
+        {
+          "category": "fix",
+          "title": "Keep source stats when catalyzing class set gear",
+          "summary": "Top Gear catalyst conversions for class set pieces now use the source item's secondary stats, and each conversion remains distinct from the set item's default stats."
+        },
         {
           "category": "fix",
           "title": "Recover dashboard preferences with duplicate IDs",

@@ -1,7 +1,7 @@
 use crate::item_db;
 use crate::types::class_data;
 use crate::types::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Inventory type for each slot (used for catalyst item lookup).
 pub fn slot_to_inv_type(slot: &str) -> Option<u64> {
@@ -63,6 +63,10 @@ pub fn build_catalyst_item(
     if !bonus_str.is_empty() {
         simc_parts.push(format!(",bonus_id={}", bonus_str));
     }
+    // Class-set pieces inherit the source item's base stats when catalyzed.
+    if tier_info.has_set && source.item_id > 0 {
+        simc_parts.push(format!(",redirected_base_stats={}", source.item_id));
+    }
     if source.enchant_id > 0 {
         simc_parts.push(format!(",enchant_id={}", source.enchant_id));
     }
@@ -90,13 +94,27 @@ pub fn build_catalyst_item(
         .map(|b| b.to_string())
         .collect::<Vec<_>>()
         .join(":");
-    let uid = format!(
-        "{}:{}:{}:{}",
-        tier_item_id,
-        bonus_key,
-        catalyst_origin.as_str(),
-        slot
-    );
+    let uid = if tier_info.has_set && source.item_id > 0 {
+        format!(
+            "{}:{}:{}:i{}:e{}:g{}:r{}:{}",
+            tier_item_id,
+            bonus_key,
+            catalyst_origin.as_str(),
+            source.ilevel,
+            source.enchant_id,
+            source.gem_id,
+            source.item_id,
+            slot
+        )
+    } else {
+        format!(
+            "{}:{}:{}:{}",
+            tier_item_id,
+            bonus_key,
+            catalyst_origin.as_str(),
+            slot
+        )
+    };
 
     ResolvedItem {
         uid,
@@ -206,6 +224,8 @@ pub fn generate_catalyst_alternatives(
 
         let current_season = item_db::current_season_id();
         let mut best: Option<ResolvedItem> = None;
+        let mut catalyst_alternatives = Vec::new();
+        let mut catalyst_uids = HashSet::new();
 
         for source in &sources {
             if source.is_catalyst
@@ -217,6 +237,14 @@ pub fn generate_catalyst_alternatives(
             }
 
             let catalyst_item = build_catalyst_item(source, &tier_info, slot_key);
+
+            if tier_info.has_set {
+                // Source stats differ after 12.1, so each eligible source is a distinct option.
+                if catalyst_uids.insert(catalyst_item.uid.clone()) {
+                    catalyst_alternatives.push(catalyst_item);
+                }
+                continue;
+            }
 
             if let Some(&existing_ilevel) = existing.get(&catalyst_item.item_id) {
                 if existing_ilevel >= catalyst_item.ilevel {
@@ -246,6 +274,12 @@ pub fn generate_catalyst_alternatives(
         if let Some(catalyst_item) = best {
             if let Some(slot_res) = slots.get_mut(slot_key.as_str()) {
                 slot_res.alternatives.push(catalyst_item);
+            }
+        }
+        if !catalyst_alternatives.is_empty() {
+            catalyst_alternatives.sort_by(|left, right| right.ilevel.cmp(&left.ilevel));
+            if let Some(slot_res) = slots.get_mut(slot_key.as_str()) {
+                slot_res.alternatives.extend(catalyst_alternatives);
             }
         }
     }

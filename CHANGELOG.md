@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ## [Unreleased]
 
+### Changed
+
+- Simulation status now shows live estimates, recent performance history, early combo results, and
+  logs as a run progresses. The sticky progress header keeps stage history and the Pause/Resume,
+  Cancel, log visibility, and CPU core controls at the top.
+
 ### Fixed
 
 - Saved dashboard layouts now ignore duplicate widget and stat card IDs, preventing repeated panels

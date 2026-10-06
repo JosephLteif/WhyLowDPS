@@ -1,11 +1,16 @@
 {
-  "contentRevision": "Unreleased-cd5d062e7584",
+  "contentRevision": "Unreleased-ee12131a7e2f",
   "releases": [
     {
       "version": "Unreleased",
       "date": "",
       "title": "Upcoming changes",
       "entries": [
+        {
+          "category": "improvement",
+          "title": "Follow simulation progress in real time",
+          "summary": "Simulation status now shows live estimates, recent performance history, early combo results, and logs as a run progresses. The sticky progress header keeps stage history and the Pause/Resume, Cancel, log visibility, and CPU core controls at the top."
+        },
         {
           "category": "fix",
           "title": "Recover dashboard preferences with duplicate IDs",

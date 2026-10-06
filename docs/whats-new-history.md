@@ -6,6 +6,14 @@ Add new work under the `Unreleased` section. Stable bump and `promote-dev` relea
 
 ## Unreleased
 
+### Improvements
+
+#### Follow simulation progress in real time
+
+Simulation status now shows live estimates, recent performance history, early combo results, and
+logs as a run progresses. The sticky progress header keeps stage history and the Pause/Resume,
+Cancel, log visibility, and CPU core controls at the top.
+
 ### Bug fixes
 
 #### Recover dashboard preferences with duplicate IDs

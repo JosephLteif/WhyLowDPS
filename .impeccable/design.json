@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-07T11:08:12Z",
+  "title": "Design System: WhyLowDPS Website",
+  "extensions": {
+    "colorMeta": {
+      "background": {
+        "role": "neutral",
+        "displayName": "Graphite",
+        "canonical": "#0e171b",
+        "tonalRamp": ["#030809", "#071013", "#0e171b", "#202c31", "#3b494e", "#647176", "#a1adb1", "#f0f3f4"]
+      },
+      "action-blue": {
+        "role": "primary",
+        "displayName": "Action Blue",
+        "canonical": "#1d63d4",
+        "tonalRamp": ["#071326", "#102c59", "#15458f", "#1d63d4", "#397ce1", "#6ca4ff", "#a6c8ff", "#e4efff"]
+      },
+      "brand-brass": {
+        "role": "secondary",
+        "displayName": "Brand Brass",
+        "canonical": "#d5ad53",
+        "tonalRamp": ["#110e06", "#30250e", "#614918", "#926d22", "#bd9237", "#d5ad53", "#e7ca88", "#f7e9bf"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Primary landing-page headline." },
+      "body": { "displayName": "Body", "purpose": "Product explanations and setup guidance." }
+    },
+    "shadows": [
+      { "name": "screenshot-frame", "value": "0 22px 54px rgba(0, 0, 0, .38)", "purpose": "Neutral depth for authentic product captures." },
+      { "name": "dialog", "value": "0 30px 100px rgba(0, 0, 0, .65)", "purpose": "Separate a focused setup dialog from the page." }
+    ],
+    "motion": [
+      { "name": "hero-settle", "value": "620ms cubic-bezier(.16, 1, .3, 1)", "purpose": "One gentle hero screenshot entrance; disabled for reduced motion." },
+      { "name": "control-feedback", "value": "150ms ease", "purpose": "Short hover and focus feedback on links and buttons." }
+    ],
+    "breakpoints": [
+      { "name": "wide-to-stacked", "value": "1060px" },
+      { "name": "tablet", "value": "820px" },
+      { "name": "mobile", "value": "560px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Main download or progression action.",
+      "html": "<a href=\"#\" class=\"ds-button-primary\">Get started</a>",
+      "css": ".ds-button-primary { display: inline-flex; min-height: 46px; align-items: center; justify-content: center; padding: 11px 18px; border: 1px solid var(--blue); border-radius: 8px; background: var(--blue); color: #fff; font: 700 .9rem/1.1 'Segoe UI', sans-serif; text-decoration: none; transition: background-color 150ms ease, transform 150ms ease; } .ds-button-primary:hover { background: var(--blue-hover); transform: translateY(-1px); } .ds-button-primary:focus-visible { outline: 3px solid #6ca4ff; outline-offset: 4px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Quiet anchor action alongside the primary download.",
+      "html": "<a href=\"#features\" class=\"ds-button-secondary\">Explore features</a>",
+      "css": ".ds-button-secondary { display: inline-flex; min-height: 46px; align-items: center; justify-content: center; padding: 11px 18px; border: 1px solid var(--line-strong); border-radius: 8px; background: transparent; color: var(--text); font: 650 .9rem/1.1 'Segoe UI', sans-serif; text-decoration: none; transition: border-color 150ms ease, background-color 150ms ease; } .ds-button-secondary:hover { border-color: #6ca4ff; background: rgba(38, 119, 244, .08); } .ds-button-secondary:focus-visible { outline: 3px solid #6ca4ff; outline-offset: 4px; }"
+    },
+    {
+      "name": "Header Navigation",
+      "kind": "nav",
+      "refersTo": "nav-link",
+      "description": "Compact desktop wayfinding with an overflow-friendly mobile row.",
+      "html": "<nav class=\"ds-nav\"><a href=\"#features\">Features</a><a href=\"#workflows\">Workflows</a></nav>",
+      "css": ".ds-nav { display: flex; gap: 24px; color: var(--text-muted); font: 600 .82rem/1.4 'Segoe UI', sans-serif; } .ds-nav a { color: inherit; text-decoration: none; transition: color 150ms ease; } .ds-nav a:hover, .ds-nav a:focus-visible { color: #75aaff; } .ds-nav:focus-visible { outline: 3px solid #6ca4ff; outline-offset: 4px; }"
+    },
+    {
+      "name": "Capability Proof Row",
+      "kind": "custom",
+      "refersTo": "capability-strip",
+      "description": "Four product jobs sit in one open row, separated by thin rules.",
+      "html": "<div class=\"ds-proof\"><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\"><path d=\"M4 20v-9m5.5 9V5m5 15v-7m5.5 7V3\"/></svg><div><strong>Simulations</strong><span>Test builds, talents, and gear with accurate, local sims.</span></div></div>",
+      "css": ".ds-proof { display: grid; grid-template-columns: 30px 1fr; gap: 14px; align-items: center; padding: 20px; border-inline-start: 1px solid var(--line); color: var(--text); font-family: 'Segoe UI', sans-serif; } .ds-proof svg { width: 27px; height: 27px; fill: none; stroke: #d5ad53; stroke-linecap: round; stroke-width: 1.65; } .ds-proof strong, .ds-proof span { display: block; } .ds-proof span { margin-top: 4px; color: var(--text-muted); font-size: .77rem; line-height: 1.45; }"
+    },
+    {
+      "name": "Screenshot Frame",
+      "kind": "custom",
+      "refersTo": "screenshot-frame",
+      "description": "Authentic app screen presented at its natural aspect ratio.",
+      "html": "<figure class=\"ds-frame\"><img src=\"dashboard.png\" alt=\"WhyLowDPS dashboard\"></figure>",
+      "css": ".ds-frame { overflow: hidden; margin: 0; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface); box-shadow: 0 22px 54px rgba(0, 0, 0, .38); } .ds-frame img { display: block; width: 100%; height: auto; }"
+    },
+    {
+      "name": "Setup Option",
+      "kind": "custom",
+      "refersTo": "setup-option",
+      "description": "A flat column for each supported way to run the product.",
+      "html": "<article class=\"ds-setup\"><h3>Windows desktop</h3><p>Run the app and SimulationCraft on your own PC.</p><a href=\"#\">Open desktop setup</a></article>",
+      "css": ".ds-setup { padding: 28px; border-top: 1px solid var(--line); background: transparent; color: var(--text); font-family: 'Segoe UI', sans-serif; } .ds-setup h3 { margin: 0 0 12px; font-size: 1.25rem; } .ds-setup p { color: var(--text-muted); } .ds-setup a { color: #75aaff; font-weight: 700; }"
+    },
+    {
+      "name": "FAQ Disclosure",
+      "kind": "custom",
+      "refersTo": "faq-disclosure",
+      "description": "Native disclosure keeps answers accessible without interruption.",
+      "html": "<details class=\"ds-faq\"><summary>Do I need a Battle.net API key?</summary><p>No. Light Mode supports local workflows without credentials.</p></details>",
+      "css": ".ds-faq { border-block-end: 1px solid var(--line); color: var(--text); font-family: 'Segoe UI', sans-serif; } .ds-faq summary { padding: 20px 4px; cursor: pointer; font-weight: 650; } .ds-faq p { max-width: 72ch; color: var(--text-soft); } .ds-faq:focus-visible { outline: 3px solid #6ca4ff; outline-offset: 4px; }"
+    },
+    {
+      "name": "Release Filter",
+      "kind": "input",
+      "refersTo": "history-filter",
+      "description": "Native release selector used on the changelog page.",
+      "html": "<label class=\"ds-filter\">Release<select><option>All releases</option></select></label>",
+      "css": ".ds-filter { display: grid; gap: 8px; color: var(--text); font: 600 .82rem 'Segoe UI', sans-serif; } .ds-filter select { min-width: 190px; padding: 11px 36px 11px 13px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; } .ds-filter select:focus-visible { outline: 3px solid #6ca4ff; outline-offset: 4px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Upgrade Bench",
+    "overview": "The public site should feel like a precise place to evaluate a character decision. Its structure follows the player's path: see the product, scan what it can answer, understand the workflow, then choose how to run it. Real WhyLowDPS screenshots carry the proof; the frame stays quiet so the product remains legible.\n\nDark graphite and blue-gray surfaces keep the page calm. Blue marks the primary action, while restrained brass connects the site to the existing WhyLowDPS mark and game context. Use the system sans stack for fast rendering without an external font request.",
+    "keyCharacteristics": [
+      "Product proof before decorative treatment.",
+      "Clear section hierarchy and generous separation.",
+      "Blue actions, restrained brass details, and authentic screenshots."
+    ],
+    "rules": [
+      { "name": "The Proof Before Polish Rule", "body": "Use real app screens for product claims; decoration never substitutes for a capability.", "section": "colors" },
+      { "name": "The Neutral Elevation Rule", "body": "Shadows use neutral black; color belongs to text, borders, and controls.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do use authentic screenshots and accurate product language.",
+      "Do keep body and muted text above WCAG AA contrast on dark surfaces.",
+      "Do honor prefers-reduced-motion and keep content visible without animation."
+    ],
+    "donts": [
+      "Don't use glowing shadows, gradients, or decorative grids as atmosphere.",
+      "Don't invent product metrics, testimonials, or UI content.",
+      "Don't turn each capability into a repeated rounded card."
+    ]
+  }
+}

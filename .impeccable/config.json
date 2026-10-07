@@ -1,0 +1,18 @@
+{
+  "buildPath": "comp",
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          "docs/index.html"
+        ],
+        "createdAt": "2026-10-07T11:28:47.539Z",
+        "reason": "Agent: nested proof cells, section containers, FAQ rows, and modal regions provide visible inset padding; the detector reports their unpadded outer wrappers."
+      }
+    ]
+  }
+}

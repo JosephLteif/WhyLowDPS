@@ -32,7 +32,7 @@
     "next": "^16.3.3",
     "pako": "^3.0.1",
     "qrcode": "^1.5.4",
-    "react": "^19.2.5",
+    "react": "^19.3.0",
     "react-dom": "^19.2.8",
     "recharts": "^3.10.1"
   },
@@ -46,7 +46,7 @@
     "@types/node": "^26.6.3",
     "@types/pako": "^3.0.0",
     "@types/qrcode": "^1.5.6",
-    "@types/react": "^19.2.18",
+    "@types/react": "^19.3.0",
     "@types/react-dom": "^19.2.4",
     "@vitest/coverage-v8": "^4.1.11",
     "autoprefixer": "^10.6.1",

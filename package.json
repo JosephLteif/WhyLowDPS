@@ -5,7 +5,7 @@
   "devDependencies": {
     "@tauri-apps/cli": "^2",
     "cross-env": "^10",
-    "npm-check-updates": "^23.1.0"
+    "npm-check-updates": "^23.1.1"
   },
   "scripts": {
     "check": "npm run typecheck && npm run lint && npm run test",

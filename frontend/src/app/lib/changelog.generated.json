@@ -1,6 +1,23 @@
 {
-  "contentRevision": "v6.2.0-b3e75b0af683",
+  "contentRevision": "Unreleased-3883b990de4a",
   "releases": [
+    {
+      "version": "Unreleased",
+      "date": "",
+      "title": "Upcoming changes",
+      "entries": [
+        {
+          "category": "improvement",
+          "title": "Update frontend, backend, and desktop dependencies",
+          "summary": "Updated frontend, Rust backend, desktop, and build tooling dependencies, including Next.js, React, reqwest, and Tauri components."
+        },
+        {
+          "category": "improvement",
+          "title": "Refresh the public site",
+          "summary": "Refreshed the public GitHub Pages site and social preview."
+        }
+      ]
+    },
     {
       "version": "v6.2.0",
       "date": "2026-10-06",

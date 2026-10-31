@@ -6841,7 +6841,7 @@ checksum = "a28ac98ddc8b9274cb41bb4d9d4d5c425b6020c50c46f25559911905610b4a88"
 
 [[package]]
 name = "whylowdps-core"
-version = "6.2.0"
+version = "6.2.1"
 dependencies = [
  "actix-cors",
  "actix-files",
@@ -6873,7 +6873,7 @@ dependencies = [
 
 [[package]]
 name = "whylowdps-desktop"
-version = "6.2.0"
+version = "6.2.1"
 dependencies = [
  "chrono",
  "discord-rich-presence",
@@ -6901,7 +6901,7 @@ dependencies = [
 
 [[package]]
 name = "whylowdps-server"
-version = "6.2.0"
+version = "6.2.1"
 dependencies = [
  "tempfile",
  "tokio",

@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ## [Unreleased]
 
+No unreleased changes yet.
+
+## [6.2.1] - 2026-10-31
+
 ### Changed
 
 - Updated frontend, Rust backend, desktop, and build tooling dependencies, including Next.js, React,

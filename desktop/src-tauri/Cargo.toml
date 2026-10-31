@@ -15,7 +15,7 @@ chrono = "0.4"
 tokio = { version = "1", features = ["full"] }
 whylowdps-core = { path = "../../backend/core", default-features = false, features = ["desktop", "web"] }
 url = "2.5.8"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 zip = "8"
 rusqlite = { version = "0.40", features = ["bundled", "backup"] }
 tauri-plugin-notification = "2"

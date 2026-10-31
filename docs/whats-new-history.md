@@ -6,7 +6,16 @@ Add new work under the `Unreleased` section. Stable bump and `promote-dev` relea
 
 ## Unreleased
 
-No unreleased changes yet.
+### Improvements
+
+#### Update frontend, backend, and desktop dependencies
+
+Updated frontend, Rust backend, desktop, and build tooling dependencies, including Next.js, React,
+reqwest, and Tauri components.
+
+#### Refresh the public site
+
+Refreshed the public GitHub Pages site and social preview.
 
 ## v6.2.0 — 2026-10-06 — Release notes for v6.2.0
 

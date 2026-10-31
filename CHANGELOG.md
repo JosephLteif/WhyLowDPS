@@ -6,7 +6,11 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ## [Unreleased]
 
-No unreleased changes yet.
+### Changed
+
+- Updated frontend, Rust backend, desktop, and build tooling dependencies, including Next.js, React,
+  reqwest, and Tauri components.
+- Refreshed the public GitHub Pages site and social preview.
 
 ## [6.2.0] - 2026-10-06
 

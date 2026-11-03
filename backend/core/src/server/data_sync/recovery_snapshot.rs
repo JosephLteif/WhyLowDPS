@@ -285,7 +285,10 @@ fn apply_verified_archive(
         let mut file = zip
             .by_index(index)
             .map_err(|err| format!("Failed to read recovery archive entry: {err}"))?;
-        let path = file.name().to_string();
+        let path = file
+            .name()
+            .map_err(|err| format!("Failed to read recovery archive entry name: {err}"))?
+            .into_owned();
         if file.is_dir() || !is_safe_relative_path(&path) {
             return Err("Recovery archive contains an unsafe path".to_string());
         }

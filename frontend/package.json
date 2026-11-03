@@ -1,6 +1,6 @@
 {
   "name": "whylowdps-frontend",
-  "version": "6.2.1",
+  "version": "6.2.2",
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",

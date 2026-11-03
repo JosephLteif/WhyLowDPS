@@ -25,7 +25,7 @@
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\""
   },
   "dependencies": {
-    "@tauri-apps/plugin-shell": "^2.3.5",
+    "@tauri-apps/plugin-shell": "^2.6.0",
     "@zxing/browser": "^0.2.1",
     "jsqr": "^1.4.0",
     "lucide-react": "^1.24.0",

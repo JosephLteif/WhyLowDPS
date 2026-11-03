@@ -1,6 +1,18 @@
 {
-  "contentRevision": "v6.2.1-fb6d51283c8b",
+  "contentRevision": "Unreleased-d3f69346c1dc",
   "releases": [
+    {
+      "version": "Unreleased",
+      "date": "",
+      "title": "Upcoming changes",
+      "entries": [
+        {
+          "category": "improvement",
+          "title": "Update frontend, backend, and desktop dependencies",
+          "summary": "Updated frontend, Rust backend, desktop, and build tooling dependencies."
+        }
+      ]
+    },
     {
       "version": "v6.2.1",
       "date": "2026-10-31",

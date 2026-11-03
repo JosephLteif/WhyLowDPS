@@ -6,7 +6,11 @@ Add new work under the `Unreleased` section. Stable bump and `promote-dev` relea
 
 ## Unreleased
 
-No unreleased changes yet.
+### Improvements
+
+#### Update frontend, backend, and desktop dependencies
+
+Updated frontend, Rust backend, desktop, and build tooling dependencies.
 
 ## v6.2.1 — 2026-10-31 — Release notes for v6.2.1
 

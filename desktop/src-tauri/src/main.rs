@@ -208,7 +208,7 @@ fn create_backup_database(source: &Path, destination: &Path) -> Result<(), Strin
     let source_connection =
         Connection::open(source).map_err(|e| format!("Unable to open database: {e}"))?;
     source_connection
-        .backup(MAIN_DB, destination, None)
+        .backup(MAIN_DB, destination, rusqlite::backup::NO_PROGRESS)
         .map_err(|e| format!("Unable to snapshot database: {e}"))?;
     drop(source_connection);
     let backup_connection = Connection::open(destination)

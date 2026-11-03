@@ -955,7 +955,7 @@ mod tests {
 
         let file = fs::File::create(&zip_path).expect("zip file");
         let mut archive = zip::ZipWriter::new(file);
-        let options: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default();
+        let options: zip::write::FileOptions<'_, '_, ()> = zip::write::FileOptions::default();
         archive
             .add_directory("nested/", options)
             .expect("nested dir entry");

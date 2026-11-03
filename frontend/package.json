@@ -25,7 +25,7 @@
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\""
   },
   "dependencies": {
-    "@tauri-apps/plugin-shell": "^2.3.5",
+    "@tauri-apps/plugin-shell": "^2.6.0",
     "@zxing/browser": "^0.2.1",
     "jsqr": "^1.4.0",
     "lucide-react": "^1.24.0",
@@ -37,13 +37,14 @@
     "recharts": "^3.10.1"
   },
   "devDependencies": {
+    "@eslint/compat": "^2.1.1",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4.3.3",
     "@tauri-apps/plugin-updater": "^2.10.1",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.6",
-    "@types/node": "^26.6.3",
+    "@types/node": "^26.6.6",
     "@types/pako": "^3.0.0",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19.3.0",
@@ -51,13 +52,13 @@
     "@vitest/coverage-v8": "^5.0.5",
     "autoprefixer": "^10.6.1",
     "cross-env": "^10.1.0",
-    "eslint": "^9.0.0",
+    "eslint": "^10.14.0",
     "eslint-config-next": "^16.3.3",
     "jsdom": "^30.0.1",
     "npm-check-updates": "^23.0.2",
     "postcss": "^8.5.28",
     "prettier": "^3.9.6",
-    "prettier-plugin-tailwindcss": "^0.8.0",
+    "prettier-plugin-tailwindcss": "^0.8.1",
     "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3",
     "vitest": "^5.0.5"

@@ -26,7 +26,8 @@ static RUNNING_PROCESSES: Lazy<Mutex<HashMap<String, u32>>> =
 static CANCELLED_JOBS: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(HashSet::new()));
 static JOB_CONTROLS: Lazy<Mutex<HashMap<String, Arc<SimulationControl>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
-static SYSINFO: Lazy<Mutex<System>> = Lazy::new(|| Mutex::new(System::new_all()));
+static SYSINFO: Lazy<Mutex<Option<System>>> =
+    Lazy::new(|| Mutex::new(System::new_all().ok()));
 
 struct AdmissionState {
     limit: usize,
@@ -595,6 +596,7 @@ impl Drop for CancellationGuard<'_> {
 pub fn get_process_stats(job_id: &str) -> Option<(f32, u64)> {
     let pid_u32 = RUNNING_PROCESSES.lock().unwrap().get(job_id).copied()?;
     let mut sys = SYSINFO.lock().unwrap();
+    let sys = sys.as_mut()?;
     let pid = Pid::from_u32(pid_u32);
     sys.refresh_processes_specifics(
         ProcessesToUpdate::Some(&[pid]),
@@ -615,15 +617,20 @@ pub fn kill_job(job_id: &str) -> bool {
         control.cancel();
     }
     if let Some(pid_u32) = RUNNING_PROCESSES.lock().unwrap().remove(job_id) {
-        let mut sys = SYSINFO.lock().unwrap();
         let pid = Pid::from_u32(pid_u32);
-        sys.refresh_processes_specifics(
-            ProcessesToUpdate::Some(&[pid]),
-            true,
-            ProcessRefreshKind::everything(),
-        );
-        if let Some(process) = sys.process(pid) {
-            process.kill()
+        let process_kill = {
+            let mut sys = SYSINFO.lock().unwrap();
+            sys.as_mut().and_then(|sys| {
+                sys.refresh_processes_specifics(
+                    ProcessesToUpdate::Some(&[pid]),
+                    true,
+                    ProcessRefreshKind::everything(),
+                );
+                sys.process(pid).map(|process| process.kill())
+            })
+        };
+        if let Some(killed) = process_kill {
+            killed
         } else {
             #[cfg(windows)]
             {

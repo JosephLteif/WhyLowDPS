@@ -17,27 +17,29 @@ use crate::storage::{self, JobStorage};
 #[cfg(feature = "desktop")]
 /// Shared system info state, refreshed in background for live CPU readings.
 pub(super) struct SystemStats {
-    sys: sysinfo::System,
+    sys: Option<sysinfo::System>,
 }
 
 #[cfg(feature = "desktop")]
 impl SystemStats {
     pub(super) fn new() -> Self {
-        let mut sys = sysinfo::System::new();
-        sys.refresh_cpu_all();
+        let mut sys = sysinfo::System::new().ok();
+        if let Some(sys) = sys.as_mut() {
+            sys.refresh_cpu_all();
+        }
         Self { sys }
     }
 
     fn refresh(&mut self) {
-        self.sys.refresh_cpu_all();
+        if let Some(sys) = self.sys.as_mut() {
+            sys.refresh_cpu_all();
+        }
     }
 
     fn cpu_usage(&self) -> f32 {
-        let cpus = self.sys.cpus();
-        if cpus.is_empty() {
-            return 0.0;
-        }
-        cpus.iter().map(|c| c.cpu_usage()).sum::<f32>() / cpus.len() as f32
+        self.sys
+            .as_ref()
+            .map_or(0.0, sysinfo::System::global_cpu_usage)
     }
 }
 

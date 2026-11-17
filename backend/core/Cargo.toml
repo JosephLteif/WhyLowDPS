@@ -36,7 +36,7 @@ actix-cors = { version = "0.7", optional = true }
 actix-files = { version = "0.7", optional = true }
 
 [dependencies.rusqlite]
-version = "0.41"
+version = "0.42"
 features = ["bundled"]
 optional = true
 
